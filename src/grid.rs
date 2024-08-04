@@ -63,15 +63,21 @@ impl Grid {
         self.cells.get_mut(&(x, y))
     }
 
-    pub fn update(&mut self, x: i32, y: i32, entity: Entity, properties: GridProperties) {
+    pub fn update(&mut self, x: i32, y: i32, new_entity: Entity, new_properties: GridProperties) {
         if let Some(cell) = self.cells.get_mut(&(x, y)) {
-            cell.entity = Some(entity);
-            cell.properties = properties;
+            cell.entity = Some(new_entity);
+            cell.properties = new_properties;
         }
     }
 
-    pub fn remove(&mut self, x: i32, y: i32) {
+    pub fn clear_cell(&mut self, x: i32, y: i32) {
         self.cells.remove(&(x, y));
+    }
+
+    pub fn remove_entity_from_cell(&mut self, x: i32, y: i32) {
+        if let Some(cell) = self.cells.get_mut(&(x, y)) {
+            cell.entity = None;
+        }
     }
 
     pub fn world_to_grid(&self, world_pos: Vec3) -> (i32, i32) {
@@ -200,7 +206,7 @@ fn update_grid_data(
         if new_grid_x >= 0 && new_grid_x < grid.width as i32 &&
             new_grid_y >= 0 && new_grid_y < grid.height as i32 {
             if (old_grid_x, old_grid_y) != (new_grid_x, new_grid_y) {
-                grid.remove(old_grid_x, old_grid_y);
+                grid.remove_entity_from_cell(old_grid_x, old_grid_y);
                 let properties = if let Some(cell) = grid.get_mut(new_grid_x, new_grid_y) {
                     Some(cell.properties.clone())
                 } else {

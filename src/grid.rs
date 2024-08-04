@@ -17,7 +17,7 @@ impl Plugin for GridPlugin {
         app.insert_resource(Grid::new(20, 20, 30.0))
             .init_gizmo_group::<MyGridGizmos>()
             .add_systems(Startup, setup_grid)
-            .add_systems(Update, (update_grid_data,draw_grid_gizmos,draw_entities_on_grid).chain());
+            .add_systems(Update, (update_grid_data,draw_grid_gizmos, draw_entities_on_grid).chain());
     }
 }
 
@@ -55,8 +55,12 @@ impl Grid {
         self.cells.insert((x, y), GridCell { entity: Some(entity), color: Srgba::rgb(0.5, 0.5, 0.5), properties: GridProperties::default() });
     }
 
-    pub fn get(&mut self, x: i32, y: i32) -> Option<&GridCell> {
+    pub fn get(&self, x: i32, y: i32) -> Option<&GridCell> {
         self.cells.get(&(x, y))
+    }
+
+    pub fn get_mut(&mut self, x: i32, y: i32) -> Option<&mut GridCell> {
+        self.cells.get_mut(&(x, y))
     }
 
     pub fn update(&mut self, x: i32, y: i32, entity: Entity, properties: GridProperties) {
@@ -114,7 +118,7 @@ fn setup_grid(mut commands: Commands, mut grid: ResMut<Grid>) {
             grid.cells.insert((x as i32, y as i32), GridCell {
                 entity: None,
                 color: Srgba::rgb(0.5, 0.5, 0.5),
-                ..default()
+                properties,
             });
 
         }
@@ -124,13 +128,39 @@ fn setup_grid(mut commands: Commands, mut grid: ResMut<Grid>) {
 
 fn draw_grid_gizmos(mut gizmos: Gizmos, grid: Res<Grid>) {
     // Draw the entire grid using the gizmos grid function
-    gizmos.grid(
-        Vec3::ZERO,
-        Quat::IDENTITY,
-        UVec2::new(grid.width, grid.height),
-        Vec2::splat(grid.cell_size),
-        Srgba::rgb(0.5, 0.5, 0.5),
-    ).outer_edges();
+    // gizmos.grid(
+    //     Vec3::ZERO,
+    //     Quat::IDENTITY,
+    //     UVec2::new(grid.width, grid.height),
+    //     Vec2::splat(grid.cell_size),
+    //     Srgba::rgb(0.5, 0.5, 0.5),
+    // ).outer_edges();
+
+    let half_width = grid.width as f32 * grid.cell_size / 2.0;
+    let half_height = grid.height as f32 * grid.cell_size / 2.0;
+
+    // Draw the entire grid using rects
+    for x in 0..grid.width as i32 {
+        for y in 0..grid.height as i32 {
+            let world_position = grid.grid_to_world((x, y)).truncate();
+            let mut color= Srgba::rgb(0.5, 0.5, 0.5);
+
+            let properties = if let Some(cell) = grid.get(x, y) {
+                Some(cell.properties.clone())
+            } else {
+                None
+            };
+
+            if let Some(properties) = properties {
+                // Check if the gravity is different from 1.0
+                if properties.gravity != 1.0 {
+                    color = Srgba::GREEN;
+                }
+            }
+
+            gizmos.rect_2d(world_position, 0.0, Vec2::splat(grid.cell_size), color);
+        }
+    }
 }
 
 fn draw_entities_on_grid(
@@ -149,8 +179,6 @@ fn draw_entities_on_grid(
             // Check if the entity is the player
             if entity == player_id {
                 color = Srgba::RED;
-            } else {
-                color = Srgba::rgb(0.5, 0.5, 0.5)
             }
 
             let world_position = grid.grid_to_world(*position).truncate();
@@ -173,13 +201,20 @@ fn update_grid_data(
             new_grid_y >= 0 && new_grid_y < grid.height as i32 {
             if (old_grid_x, old_grid_y) != (new_grid_x, new_grid_y) {
                 grid.remove(old_grid_x, old_grid_y);
-                if let Some(cell) = grid.get(new_grid_x, new_grid_y) {
-                    grid.update(new_grid_x, new_grid_y, event.entity, cell.properties.clone());
+                let properties = if let Some(cell) = grid.get_mut(new_grid_x, new_grid_y) {
+                    Some(cell.properties.clone())
+                } else {
+                    None
+                };
+
+                if let Some(properties) = properties {
+                    grid.update(new_grid_x, new_grid_y, event.entity, properties);
                 } else {
                     grid.insert(new_grid_x, new_grid_y, event.entity);
                 }
 
-                if let Some(cell) = grid.get(new_grid_x, new_grid_y) {
+                // Now it's safe to borrow `grid` mutably again
+                if let Some(cell) = grid.get_mut(new_grid_x, new_grid_y) {
                     println!("Player entered cell ({}, {}): {:?}", new_grid_x, new_grid_y, cell.properties);
                 }
             }

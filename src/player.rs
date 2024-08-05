@@ -1,3 +1,4 @@
+use avian2d::{math::*, prelude::*};
 use bevy::prelude::*;
 use crate::grid::Grid;
 use bevy::input::keyboard::KeyCode;
@@ -42,6 +43,8 @@ fn setup_player(
     let player_initial_position = grid.grid_to_world(player_grid_position);
 
     let player_entity = commands.spawn((
+        RigidBody::Dynamic,
+        Collider::circle(10.0),
         Player,
         Velocity::default(),
         MaterialMesh2dBundle {
@@ -62,7 +65,7 @@ fn setup_player(
 
 
 fn move_player(
-    mut query: Query<(Entity, &mut Transform, &mut Velocity), With<Player>>,
+    mut query: Query<(Entity, &Transform, &mut LinearVelocity), With<Player>>,
     keys: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
     mut event_writer: EventWriter<PlayerMovedEvent>,
@@ -92,18 +95,21 @@ fn move_player(
 
         // Update the player's position based on its velocity
         let old_position = transform.translation;
-        transform.translation.x += velocity.x * time.delta_seconds();
-        transform.translation.y += velocity.y * time.delta_seconds();
+        let new_position = Vec3::new(
+            old_position.x + velocity.x * time.delta_seconds(),
+            old_position.y + velocity.y * time.delta_seconds(),
+            old_position.z,
+        );
+        //transform.translation.x += velocity.x * time.delta_seconds();
+        //transform.translation.y += velocity.y * time.delta_seconds();
 
         // Send the PlayerMovedEvent
         event_writer.send(PlayerMovedEvent {
             entity,
             old_position,
-            new_position: transform.translation,
+            new_position,
         });
 
-        // Apply damping to simulate inertia
-        velocity.x *= 0.98;
-        velocity.y *= 0.98;
+
     }
 }

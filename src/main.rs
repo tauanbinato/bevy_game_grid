@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-
+use avian2d::{math::*, prelude::*};
 
 mod grid;
 mod player;
@@ -21,6 +21,8 @@ fn main() {
             }),
             ..default()
         }))
+        .add_plugins(PhysicsPlugins::default().with_length_unit(20.0))
+        .insert_resource(Gravity(Vector::ZERO))
         .add_plugins(GridPlugin)
         .add_plugins(PlayerPlugin)
         .add_plugins(OrePlugin)

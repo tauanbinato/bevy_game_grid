@@ -1,3 +1,4 @@
+use avian2d::{math::*, prelude::*};
 use bevy::prelude::*;
 use crate::grid::Grid;
 use bevy::prelude::*;
@@ -24,6 +25,8 @@ fn setup_ore(
     let ore_initial_position = grid.grid_to_world(ore_grid_position);
 
     let ore_entity = commands.spawn((
+        RigidBody::Static,
+        Collider::circle(10.0),
         Ore,
         MaterialMesh2dBundle {
             mesh: meshes.add(Circle { radius: 10.0}).into(),

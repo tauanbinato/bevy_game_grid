@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use bevy::sprite::{MaterialMesh2dBundle, Mesh2dHandle};
 use std::collections::HashMap;
 use std::process::Command;
+use avian2d::prelude::LinearVelocity;
 use bevy::{
     core::FrameCount,
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
@@ -229,7 +230,7 @@ fn update_grid_data(
     }
 }
 fn apply_gravity(
-    mut query: Query<(&mut Transform, &mut Velocity)>,
+    mut query: Query<(&Transform, &mut LinearVelocity)>,
     grid: Res<Grid>,
     time: Res<Time>,
 ) {
@@ -254,8 +255,8 @@ fn apply_gravity(
             }
 
             // Update the entity's position based on its velocity
-            transform.translation.x += velocity.x * time.delta_seconds();
-            transform.translation.y += velocity.y * time.delta_seconds();
+            //transform.translation.x += velocity.x * time.delta_seconds();
+            //transform.translation.y += velocity.y * time.delta_seconds();
         }
     }
 }

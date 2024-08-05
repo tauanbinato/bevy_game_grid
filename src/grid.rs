@@ -240,7 +240,7 @@ fn apply_gravity(
 
             if gravity == 1.0 {
                 // Apply friction to simulate solid top-down movement
-                let friction = 0.9;
+                let friction = 0.92;
                 velocity.x *= friction;
                 velocity.y *= friction;
 

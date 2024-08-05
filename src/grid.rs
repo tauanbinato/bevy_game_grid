@@ -8,16 +8,17 @@ use bevy::{
     prelude::*,
     window::{CursorGrabMode, PresentMode, WindowLevel, WindowTheme},
 };
-use crate::player::{Player, PlayerMovedEvent};
+use crate::player::{Player, PlayerMovedEvent, Velocity};
 
 pub struct GridPlugin;
 
 impl Plugin for GridPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(Grid::new(20, 20, 30.0))
+        app.insert_resource(Grid::new(20, 20, 50.0))
             .init_gizmo_group::<MyGridGizmos>()
             .add_systems(Startup, setup_grid)
-            .add_systems(Update, (update_grid_data,draw_grid_gizmos, draw_entities_on_grid).chain());
+            .add_systems(Update, (update_grid_data,draw_grid_gizmos, draw_entities_on_grid).chain())
+            .add_systems(FixedUpdate, apply_gravity);
     }
 }
 
@@ -227,4 +228,34 @@ fn update_grid_data(
         }
     }
 }
+fn apply_gravity(
+    mut query: Query<(&mut Transform, &mut Velocity)>,
+    grid: Res<Grid>,
+    time: Res<Time>,
+) {
+    for (mut transform, mut velocity) in &mut query {
+        let (grid_x, grid_y) = grid.world_to_grid(transform.translation);
+        if let Some(cell) = grid.get(grid_x, grid_y) {
+            let gravity = cell.properties.gravity;
 
+            if gravity == 1.0 {
+                // Apply friction to simulate solid top-down movement
+                let friction = 0.9;
+                velocity.x *= friction;
+                velocity.y *= friction;
+
+            } else {
+                // Apply gravity effect
+                velocity.y -= gravity * time.delta_seconds();
+
+                // Apply damping to simulate inertia for cells with gravity less than 1.0
+                velocity.x *= 0.98;
+                velocity.y *= 0.98;
+            }
+
+            // Update the entity's position based on its velocity
+            transform.translation.x += velocity.x * time.delta_seconds();
+            transform.translation.y += velocity.y * time.delta_seconds();
+        }
+    }
+}

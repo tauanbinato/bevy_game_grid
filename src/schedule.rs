@@ -6,9 +6,11 @@ use crate::state::GameState;
 pub enum InGameSet {
     UserInput,
     EntityUpdates,
+    EntityReads,
     CollisionDetection,
     DespawnEntities,
     SpawnEntities,
+    Debug
 }
 
 pub struct SchedulePlugin;
@@ -24,15 +26,25 @@ impl Plugin for SchedulePlugin {
                 InGameSet::UserInput,
                 InGameSet::EntityUpdates,
                 InGameSet::CollisionDetection,
+                InGameSet::Debug
             )
                 .chain()
                 .run_if(in_state(GameState::InGame)),
         )
-            .add_systems(
-                Update,
-                apply_deferred
-                    .after(InGameSet::DespawnEntities)
-                    .before(InGameSet::UserInput),
-            );
+            .configure_sets(
+                FixedUpdate,
+                (
+                    InGameSet::EntityUpdates,
+                    InGameSet::EntityReads,
+                )
+                    .chain()
+                    .run_if(in_state(GameState::InGame)),
+            )
+        .add_systems(
+            Update,
+            apply_deferred
+                .after(InGameSet::DespawnEntities)
+                .before(InGameSet::UserInput),
+        );
     }
 }

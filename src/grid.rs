@@ -9,18 +9,24 @@ use bevy::{
     prelude::*,
     window::{CursorGrabMode, PresentMode, WindowLevel, WindowTheme},
 };
-use crate::player::{Player, PlayerMoveEvent};
+use crate::player::{Player, PlayerGridPosition};
 use crate::schedule::InGameSet;
 
 pub struct GridPlugin;
 
 impl Plugin for GridPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(Grid::new(5, 5, 50.0))
+        app.insert_resource(Grid::new(10, 10, 50.0))
             .init_gizmo_group::<MyGridGizmos>()
+            .add_event::<PlayerGridChangeEvent>()
             .add_systems(Startup, setup_grid)
-            .add_systems(Update, (update_grid_data).chain())
-            .add_systems(Update, apply_gravity.in_set(InGameSet::EntityUpdates));
+
+            .add_systems(Update, (update_grid_data, detect_grid_change).chain())
+            .add_systems(PostUpdate, (debug_draw_grid_and_entities).in_set(InGameSet::Debug).chain())
+
+            .add_systems(FixedUpdate, apply_gravity.in_set(InGameSet::EntityUpdates))
+            .add_systems(FixedPostUpdate, detect_grid_change.in_set(InGameSet::EntityReads));
+
     }
 }
 
@@ -37,7 +43,7 @@ pub struct Grid {
     pub cells: HashMap<(i32, i32), GridCell>,
 }
 
-#[derive(Default, Resource)]
+#[derive(Default, Debug, Resource)]
 pub struct GridCell {
     pub entity: Option<Entity>,
     pub color: Srgba,
@@ -117,12 +123,7 @@ struct MyGridGizmos {}
 fn setup_grid(mut commands: Commands, mut grid: ResMut<Grid>) {
     for x in 0..grid.width {
         for y in 0..grid.height {
-            let properties = if x % 2 == 0 && y % 2 == 0 {
-                GridProperties { gravity: 0.5 }
-            } else {
-                GridProperties { gravity: 1.0 }
-            };
-
+            let properties= GridProperties { gravity: 1.0 };
 
             grid.cells.insert((x as i32, y as i32), GridCell {
                 entity: None,
@@ -135,99 +136,93 @@ fn setup_grid(mut commands: Commands, mut grid: ResMut<Grid>) {
     commands.spawn(Camera2dBundle::default());
 }
 
-fn draw_grid_gizmos(mut gizmos: Gizmos, grid: Res<Grid>) {
-    // Draw the entire grid using the gizmos grid function
-    // gizmos.grid(
-    //     Vec3::ZERO,
-    //     Quat::IDENTITY,
-    //     UVec2::new(grid.width, grid.height),
-    //     Vec2::splat(grid.cell_size),
-    //     Srgba::rgb(0.5, 0.5, 0.5),
-    // ).outer_edges();
+fn debug_draw_grid_and_entities(
+    mut gizmos: Gizmos,
+    grid: Res<Grid>
+) {
+    // Another way to draw the grid
+    gizmos.grid_2d(
+        Vec2::ZERO,
+        0.0,
+        UVec2::new(grid.width, grid.height),
+        Vec2::splat(grid.cell_size),
+        Srgba::rgb(0.5, 0.5, 0.5),
+    ).outer_edges();
 
-    let half_width = grid.width as f32 * grid.cell_size / 2.0;
-    let half_height = grid.height as f32 * grid.cell_size / 2.0;
+    // let player_id = player_query.single();
+    // let half_width = grid.width as f32 * grid.cell_size / 2.0;
+    // let half_height = grid.height as f32 * grid.cell_size / 2.0;
 
-    // Draw the entire grid using rects
-    for x in 0..grid.width as i32 {
-        for y in 0..grid.height as i32 {
-            let world_position = grid.grid_to_world((x, y)).truncate();
-            let mut color= Srgba::rgb(0.5, 0.5, 0.5);
-
-            let properties = if let Some(cell) = grid.get(x, y) {
-                Some(cell.properties.clone())
-            } else {
-                None
-            };
-
-            if let Some(properties) = properties {
-                // Check if the gravity is different from 1.0
-                if properties.gravity != 1.0 {
-                    color = Srgba::GREEN;
-                }
-            }
-
-            gizmos.rect_2d(world_position, 0.0, Vec2::splat(grid.cell_size), color);
-        }
-    }
+    // for x in 0..grid.width as i32 {
+    //     for y in 0..grid.height as i32 {
+    //         let world_position = grid.grid_to_world((x, y)).truncate();
+    //         let mut color = Srgba::rgb(0.5, 0.5, 0.5);
+    //
+    //         if let Some(cell) = grid.get(x, y) {
+    //             if cell.properties.gravity != 1.0 {
+    //                 color = Srgba::GREEN;
+    //             }
+    //
+    //             if let Some(entity) = cell.entity {
+    //                 if entity == player_id {
+    //                     color = Srgba::RED;
+    //                 } else {
+    //                     color = cell.color;
+    //                 }
+    //             }
+    //         }
+    //
+    //         gizmos.rect_2d(world_position, 0.0, Vec2::splat(grid.cell_size), color);
+    //     }
+    // }
 }
 
-fn draw_entities_on_grid(
-    mut gizmos: Gizmos,
-    grid: Res<Grid>,
-    player_query: Query<Entity, With<Player>>,
+#[derive(Event, Debug)]
+pub struct PlayerGridChangeEvent {
+    pub old_cell: (i32, i32),
+    pub new_cell: (i32, i32),
+}
+
+fn detect_grid_change(
+    query: Query<(&Transform), With<Player>>,
+    mut grid: ResMut<Grid>,
+    mut event_writer: EventWriter<PlayerGridChangeEvent>,
+    mut player_grid_position: ResMut<PlayerGridPosition>,
 ) {
-    // Get the player entity ID
-    let player_id = player_query.single();
 
-    // Iterate over grid cells
-    for (position, cell) in &grid.cells {
-        if let Some(entity) = cell.entity {
-            let mut color = cell.color;
+    for (transform) in &query {
 
-            // Check if the entity is the player
-            if entity == player_id {
-                color = Srgba::RED;
-            }
+        let (updated_grid_x, updated_grid_y) = grid.world_to_grid(transform.translation);
+        let (old_grid_x, old_grid_y) = player_grid_position.grid_position;
 
-            let world_position = grid.grid_to_world(*position).truncate();
-            gizmos.rect_2d(world_position, 0.0, Vec2::splat(grid.cell_size), color);
+        if (old_grid_x, old_grid_y) != (updated_grid_x, updated_grid_y) {
+            println!("Player moved from ({}, {}) to ({}, {})", old_grid_x, old_grid_y, updated_grid_x, updated_grid_y);
+            event_writer.send(PlayerGridChangeEvent {
+                old_cell: (old_grid_x, old_grid_y),
+                new_cell: (updated_grid_x, updated_grid_y),
+            });
+
+            // Update the player's grid position state
+            player_grid_position.grid_position = (updated_grid_x, updated_grid_y);
         }
     }
 }
 
 fn update_grid_data(
+    mut query: Query<(Entity, &Transform, &mut LinearVelocity), With<Player>>,
     mut grid: ResMut<Grid>,
-    mut event_reader: EventReader<PlayerMoveEvent>,
+    mut event_reader: EventReader<PlayerGridChangeEvent>,
 ) {
     for event in event_reader.read() {
-        let old_position = event.old_position;
-        let new_position = event.new_position;
-        let (new_grid_x, new_grid_y) = grid.world_to_grid(new_position);
-        let (old_grid_x, old_grid_y) = grid.world_to_grid(old_position);
+        let PlayerGridChangeEvent { old_cell, new_cell } = *event;
 
-        if new_grid_x >= 0 && new_grid_x < grid.width as i32 &&
-            new_grid_y >= 0 && new_grid_y < grid.height as i32 {
-            if (old_grid_x, old_grid_y) != (new_grid_x, new_grid_y) {
-                grid.remove_entity_from_cell(old_grid_x, old_grid_y);
-                let properties = if let Some(cell) = grid.get_mut(new_grid_x, new_grid_y) {
-                    Some(cell.properties.clone())
-                } else {
-                    None
-                };
-
-                if let Some(properties) = properties {
-                    grid.update(new_grid_x, new_grid_y, event.entity, properties);
-                } else {
-                    grid.insert(new_grid_x, new_grid_y, event.entity);
-                }
-
-                // Now it's safe to borrow `grid` mutably again
-                if let Some(cell) = grid.get_mut(new_grid_x, new_grid_y) {
-                    println!("Player entered cell ({}, {}): {:?}", new_grid_x, new_grid_y, cell.properties);
-                }
-            }
-        }
+        // if let Some(cell) = grid.get_mut(old_cell.0, old_cell.1) {
+        //     cell.entity = None;
+        // }
+        //
+        // if let Some(cell) = grid.get_mut(new_cell.0, new_cell.1) {
+        //     cell.entity = query.single();
+        // }
     }
 }
 fn apply_gravity(
@@ -248,7 +243,7 @@ fn apply_gravity(
 
             } else {
                 // Apply gravity effect
-                velocity.y -= gravity * time.delta_seconds();
+                //velocity.y -= gravity * time.delta_seconds();
 
                 // Apply damping to simulate inertia for cells with gravity less than 1.0
                 velocity.x *= 0.98;

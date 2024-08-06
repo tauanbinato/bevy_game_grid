@@ -4,36 +4,25 @@ use crate::grid::Grid;
 use bevy::input::keyboard::KeyCode;
 use bevy::prelude::*;
 use bevy::sprite::{MaterialMesh2dBundle};
+use crate::schedule::InGameSet;
 
 const MOVE_SPEED: f32 = 250.0;
-
-#[derive(Component, Default)]
-pub struct Velocity {
-    pub x: f32,
-    pub y: f32,
-}
-
-#[derive(Event)]
-pub struct PlayerMovedEvent {
-    pub entity: Entity,
-    pub new_position: Vec3,
-    pub old_position: Vec3,
-}
 
 pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup_player)
-        .add_systems(FixedUpdate, move_player)
-        .add_event::<PlayerMovedEvent>();
+        app.add_event::<PlayerMoveEvent>().add_event::<InputAction>()
+            .add_systems(PostStartup, spawn_player.in_set(InGameSet::SpawnEntities))
+            .add_systems(Update, keyboard_input.in_set(InGameSet::UserInput))
+            .add_systems(FixedUpdate, movement_system.in_set(InGameSet::EntityUpdates));
     }
 }
 
 #[derive(Component)]
 pub struct Player;
 
-fn setup_player(
+fn spawn_player(
     mut commands: Commands,
     mut materials: ResMut<Assets<ColorMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -46,7 +35,6 @@ fn setup_player(
         RigidBody::Dynamic,
         Collider::circle(10.0),
         Player,
-        Velocity::default(),
         MaterialMesh2dBundle {
             mesh: meshes.add(Circle { radius: 10.0}).into(),
             material: materials.add(ColorMaterial::from(Color::WHITE)),
@@ -63,53 +51,85 @@ fn setup_player(
 }
 
 
+/// An event sent for a movement input action.
+#[derive(Event)]
+pub enum InputAction {
+    Move(Vec3),
+}
 
-fn move_player(
-    mut query: Query<(Entity, &Transform, &mut LinearVelocity), With<Player>>,
+#[derive(Event)]
+pub struct PlayerMoveEvent {
+    pub entity: Entity,
+    pub old_position: Vec3,
+    pub new_position: Vec3,
+}
+
+/// Sends [`MovementAction`] events based on keyboard input.
+fn keyboard_input(
+    mut movement_event_writer: EventWriter<InputAction>,
     keys: Res<ButtonInput<KeyCode>>,
+) {
+    let mut direction = Vec3::ZERO;
+
+    if keys.pressed(KeyCode::KeyW) {
+        direction.y += 1.0;
+    }
+    if keys.pressed(KeyCode::KeyS) {
+        direction.y -= 1.0;
+    }
+    if keys.pressed(KeyCode::KeyA) {
+        direction.x -= 1.0;
+    }
+    if keys.pressed(KeyCode::KeyD) {
+        direction.x += 1.0;
+    }
+
+    if direction.length() > 0.0 {
+        movement_event_writer.send(InputAction::Move(direction.normalize()));
+    }
+}
+fn movement_system(
+    mut query: Query<(Entity, &Transform, &mut LinearVelocity), With<Player>>,
+    mut movement_event_reader: EventReader<InputAction>,
+    mut movement_event_writer: EventWriter<PlayerMoveEvent>,
     time: Res<Time>,
-    mut event_writer: EventWriter<PlayerMovedEvent>,
     grid: Res<Grid>,
 ) {
-    for (entity, mut transform, mut velocity) in &mut query {
-        let mut direction = Vec3::ZERO;
+    // Precision is adjusted so that the example works with
+    // both the `f32` and `f64` features. Otherwise you don't need this.
+    let delta_time = time.delta_seconds_f64().adjust_precision();
 
-        if keys.pressed(KeyCode::KeyW) {
-            direction.y += 1.0;
+    for event in movement_event_reader.read() {
+
+        for (entity, mut transform, mut velocity) in &mut query {
+
+            match event {
+                InputAction::Move(direction) => {
+                    velocity.x += direction.x * MOVE_SPEED * delta_time;
+                    velocity.y += direction.y * MOVE_SPEED * delta_time;
+
+                    // Update the player's position based on its velocity
+                    let old_position = transform.translation;
+                    let new_position = Vec3::new(
+                        old_position.x + velocity.x * delta_time,
+                        old_position.y + velocity.y * delta_time,
+                        old_position.z,
+                    );
+
+                    // Send the PlayerMovedEvent
+                    movement_event_writer.send(PlayerMoveEvent {
+                        entity,
+                        old_position,
+                        new_position,
+                    });
+                }
+                _ => {}
+            }
+
+
+
         }
-        if keys.pressed(KeyCode::KeyS) {
-            direction.y -= 1.0;
-        }
-        if keys.pressed(KeyCode::KeyA) {
-            direction.x -= 1.0;
-        }
-        if keys.pressed(KeyCode::KeyD) {
-            direction.x += 1.0;
-        }
-
-        if direction.length() > 0.0 {
-            let move_delta = MOVE_SPEED * direction.normalize() * time.delta_seconds();
-            velocity.x += move_delta.x;
-            velocity.y += move_delta.y;
-        }
-
-        // Update the player's position based on its velocity
-        let old_position = transform.translation;
-        let new_position = Vec3::new(
-            old_position.x + velocity.x * time.delta_seconds(),
-            old_position.y + velocity.y * time.delta_seconds(),
-            old_position.z,
-        );
-        //transform.translation.x += velocity.x * time.delta_seconds();
-        //transform.translation.y += velocity.y * time.delta_seconds();
-
-        // Send the PlayerMovedEvent
-        event_writer.send(PlayerMovedEvent {
-            entity,
-            old_position,
-            new_position,
-        });
-
-
     }
+
+
 }

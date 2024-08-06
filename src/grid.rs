@@ -9,17 +9,18 @@ use bevy::{
     prelude::*,
     window::{CursorGrabMode, PresentMode, WindowLevel, WindowTheme},
 };
-use crate::player::{Player, PlayerMovedEvent, Velocity};
+use crate::player::{Player, PlayerMoveEvent};
+use crate::schedule::InGameSet;
 
 pub struct GridPlugin;
 
 impl Plugin for GridPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(Grid::new(20, 20, 50.0))
+        app.insert_resource(Grid::new(5, 5, 50.0))
             .init_gizmo_group::<MyGridGizmos>()
             .add_systems(Startup, setup_grid)
-            .add_systems(Update, (update_grid_data,draw_grid_gizmos, draw_entities_on_grid).chain())
-            .add_systems(FixedUpdate, apply_gravity);
+            .add_systems(Update, (update_grid_data).chain())
+            .add_systems(Update, apply_gravity.in_set(InGameSet::EntityUpdates));
     }
 }
 
@@ -197,7 +198,7 @@ fn draw_entities_on_grid(
 
 fn update_grid_data(
     mut grid: ResMut<Grid>,
-    mut event_reader: EventReader<PlayerMovedEvent>,
+    mut event_reader: EventReader<PlayerMoveEvent>,
 ) {
     for event in event_reader.read() {
         let old_position = event.old_position;
@@ -234,7 +235,7 @@ fn apply_gravity(
     grid: Res<Grid>,
     time: Res<Time>,
 ) {
-    for (mut transform, mut velocity) in &mut query {
+    for (transform, mut velocity) in &mut query {
         let (grid_x, grid_y) = grid.world_to_grid(transform.translation);
         if let Some(cell) = grid.get(grid_x, grid_y) {
             let gravity = cell.properties.gravity;

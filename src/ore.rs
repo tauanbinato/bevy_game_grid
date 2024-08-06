@@ -3,19 +3,20 @@ use bevy::prelude::*;
 use crate::grid::Grid;
 use bevy::prelude::*;
 use bevy::sprite::{MaterialMesh2dBundle};
+use crate::schedule::InGameSet;
 
 pub struct OrePlugin;
 
 impl Plugin for OrePlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup_ore);
+        app.add_systems(PostStartup, spawn_ore.in_set(InGameSet::SpawnEntities));
     }
 }
 
 #[derive(Component)]
 pub struct Ore;
 
-fn setup_ore(
+fn spawn_ore(
     mut commands: Commands,
     mut materials: ResMut<Assets<ColorMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,

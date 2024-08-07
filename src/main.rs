@@ -24,7 +24,7 @@ fn main() {
                 title: "My Game Window".into(),
                 name: Some("bevy.app".into()),
                 resolution: (1300., 800.).into(),
-                present_mode: PresentMode::Fifo,
+                present_mode: PresentMode::Immediate,
                 ..default()
             }),
             ..default()

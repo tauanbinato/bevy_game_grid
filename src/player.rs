@@ -56,7 +56,7 @@ fn spawn_player(
     ))
         .id();
 
-    grid.insert(initial_grid_position.0, initial_grid_position.1, player_entity);
+    grid.insert_new(initial_grid_position.0, initial_grid_position.1, player_entity);
 }
 
 
@@ -97,7 +97,8 @@ fn movement_system(
 ) {
     // Precision is adjusted so that the example works with
     // both the `f32` and `f64` features. Otherwise you don't need this.
-    let delta_time = time.delta_seconds_f64().adjust_precision();
+    let delta_time = time.delta_seconds();
+
 
     for event in input_reader.read() {
 
@@ -107,6 +108,7 @@ fn movement_system(
                 InputAction::Move(direction) => {
                     velocity.x += direction.x * MOVE_SPEED * delta_time;
                     velocity.y += direction.y * MOVE_SPEED * delta_time;
+
                 }
                 _ => {}
             }

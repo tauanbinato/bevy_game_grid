@@ -41,5 +41,5 @@ fn spawn_ore(
     ))
         .id();
 
-    grid.insert(ore_grid_position.0, ore_grid_position.1, ore_entity);
+    grid.insert_new(ore_grid_position.0, ore_grid_position.1, ore_entity);
 }

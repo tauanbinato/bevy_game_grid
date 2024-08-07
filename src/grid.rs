@@ -8,9 +8,11 @@ use bevy::{
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
     prelude::*,
     window::{CursorGrabMode, PresentMode, WindowLevel, WindowTheme},
+    color::palettes::css::*
 };
 use crate::player::{Player, PlayerGridPosition};
 use crate::schedule::InGameSet;
+
 
 pub struct GridPlugin;
 
@@ -21,8 +23,8 @@ impl Plugin for GridPlugin {
             .add_event::<PlayerGridChangeEvent>()
             .add_systems(Startup, setup_grid)
 
-            .add_systems(Update, (detect_grid_change.in_set(InGameSet::EntityReads)).chain())
-            .add_systems(PostUpdate, (debug_draw_grid_and_entities).in_set(InGameSet::Debug).chain())
+            .add_systems(Update, (detect_grid_updates.in_set(InGameSet::EntityReads)).chain())
+            .add_systems(PostUpdate, (debug_draw_grid, debug_draw_rects).in_set(InGameSet::Debug).chain())
             .add_systems(FixedUpdate, apply_gravity.in_set(InGameSet::EntityUpdates));
 
     }
@@ -149,7 +151,7 @@ fn setup_grid(mut commands: Commands) {
     commands.spawn(Camera2dBundle::default());
 }
 
-fn debug_draw_grid_and_entities(
+fn debug_draw_grid(
     mut gizmos: Gizmos,
     grid: Res<Grid>
 ) {
@@ -162,32 +164,29 @@ fn debug_draw_grid_and_entities(
         Srgba::rgb(0.5, 0.5, 0.5),
     ).outer_edges();
 
-    // let player_id = player_query.single();
-    // let half_width = grid.width as f32 * grid.cell_size / 2.0;
-    // let half_height = grid.height as f32 * grid.cell_size / 2.0;
+}
 
-    // for x in 0..grid.width as i32 {
-    //     for y in 0..grid.height as i32 {
-    //         let world_position = grid.grid_to_world((x, y)).truncate();
-    //         let mut color = Srgba::rgb(0.5, 0.5, 0.5);
-    //
-    //         if let Some(cell) = grid.get(x, y) {
-    //             if cell.properties.gravity != 1.0 {
-    //                 color = Srgba::GREEN;
-    //             }
-    //
-    //             if let Some(entity) = cell.entity {
-    //                 if entity == player_id {
-    //                     color = Srgba::RED;
-    //                 } else {
-    //                     color = cell.color;
-    //                 }
-    //             }
-    //         }
-    //
-    //         gizmos.rect_2d(world_position, 0.0, Vec2::splat(grid.cell_size), color);
-    //     }
-    // }
+fn debug_draw_rects(
+    mut gizmos: Gizmos,
+    grid: Res<Grid>,
+    query: Query<&Transform, With<Player>>,
+) {
+
+    let square_size = grid.cell_size * 0.95; // Adjust this value to control the size of the square
+
+    for transform in &query {
+        let (grid_x, grid_y) = grid.world_to_grid(transform.translation);
+
+        // Draw a red rectangle at the player's current grid position
+        let world_pos = grid.grid_to_world((grid_x, grid_y));
+        gizmos.rect_2d(
+            Vec2::new(world_pos.x, world_pos.y),
+            0.0,
+            Vec2::splat(square_size),
+            Srgba::RED,
+        );
+
+    }
 }
 
 #[derive(Event, Debug)]
@@ -197,7 +196,7 @@ pub struct PlayerGridChangeEvent {
     pub new_cell: (i32, i32),
 }
 
-fn detect_grid_change(
+fn detect_grid_updates(
     query: Query<(Entity, &Transform), With<Player>>,
     mut grid: ResMut<Grid>,
     mut event_writer: EventWriter<PlayerGridChangeEvent>,

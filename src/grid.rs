@@ -30,14 +30,24 @@ impl Plugin for GridPlugin {
     }
 }
 
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum EnvironmentType {
+    OuterSpace,
+    InsideShip,
+    PlanetSurface,
+}
+
 #[derive(Clone, Debug)]
 pub struct GridProperties {
-    pub gravity: f32
+    pub gravity: f32,
+    pub environment: EnvironmentType
 }
 impl Default for GridProperties {
     fn default() -> Self {
         Self {
-            gravity: 1.0
+            gravity: 1.0,
+            environment: EnvironmentType::InsideShip,
         }
     }
 }
@@ -209,7 +219,7 @@ fn detect_grid_updates(
         let (old_grid_x, old_grid_y) = player_grid_position.grid_position;
 
         if (old_grid_x, old_grid_y) != (updated_grid_x, updated_grid_y) {
-            println!("Player moved from ({}, {}) to ({}, {})", old_grid_x, old_grid_y, updated_grid_x, updated_grid_y);
+            debug!("Player moved from ({}, {}) to ({}, {})", old_grid_x, old_grid_y, updated_grid_x, updated_grid_y);
             event_writer.send(PlayerGridChangeEvent {
                 entity,
                 old_cell: (old_grid_x, old_grid_y),

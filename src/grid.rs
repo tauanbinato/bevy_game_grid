@@ -11,21 +11,20 @@ use bevy::{
     color::palettes::css::*
 };
 use crate::player::{Player, PlayerGridPosition};
-use crate::schedule::InGameSet;
-
+use crate::schedule::{InGameSet, InLoadGridSet};
+use crate::state::GameState;
 
 pub struct GridPlugin;
 
 impl Plugin for GridPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(Grid::new(10, 10, 50.0))
+        app
             .init_gizmo_group::<MyGridGizmos>()
             .add_event::<PlayerGridChangeEvent>()
-            .add_systems(Startup, setup_grid)
-
-            .add_systems(Update, (detect_grid_updates.in_set(InGameSet::EntityReads)).chain())
-            .add_systems(PostUpdate, (debug_draw_grid, debug_draw_rects).in_set(InGameSet::Debug).chain())
-            .add_systems(FixedUpdate, apply_gravity.in_set(InGameSet::EntityUpdates));
+            .add_systems(Startup, setup_grid.run_if(in_state(GameState::BuildingGrid)))
+            .add_systems(Update, detect_grid_updates.run_if(in_state(GameState::InGame)))
+            .add_systems(PostUpdate, (debug_draw_grid, debug_draw_rects).chain().run_if(in_state(GameState::InGame)))
+            .add_systems(FixedUpdate, apply_gravity.run_if(in_state(GameState::InGame)));
 
     }
 }
@@ -169,9 +168,61 @@ impl Grid {
 #[derive(Default, Reflect, GizmoConfigGroup)]
 struct MyGridGizmos {}
 
-fn setup_grid(mut commands: Commands) {
-
+fn setup_grid(
+    mut commands: Commands,
+    //level: Res<LevelHandle>,
+    //mut levels: ResMut<Assets<Level>>,
+    mut next_state: ResMut<NextState<GameState>>
+) {
+    debug!("Setting up grid");
     commands.spawn(Camera2dBundle::default());
+
+    // if let Some(level) = levels.remove(level.0.id()) {
+    //     let mut cells = HashMap::new();
+    //     debug!("Loading level with width: {}, height: {}, cell_size: {}", level.width, level.height, level.cell_size);
+    //     for (y, row) in level.world.iter().enumerate() {
+    //         for (x, cell) in row.chars().enumerate() {
+    //             let environment = EnvironmentType::from(cell);
+    //             let world_pos = Vec3::new(
+    //                 x as f32 * level.cell_size,
+    //                 y as f32 * level.cell_size,
+    //                 0.0,
+    //             );
+    //
+    //             let entity = commands.spawn(SpriteBundle {
+    //                 transform: Transform::from_translation(world_pos),
+    //                 ..default()
+    //             }).id();
+    //
+    //             cells.insert(
+    //                 (x as i32, y as i32),
+    //                 GridCell {
+    //                     entity: Some(entity),
+    //                     color: Srgba::rgb(0.5, 0.5, 0.5),
+    //                     properties: GridProperties {
+    //                         environment,
+    //                         ..default()
+    //                     },
+    //                 },
+    //             );
+    //         }
+    //     }
+    //     let grid = Grid {
+    //         width: level.width,
+    //         height: level.height,
+    //         cell_size: level.cell_size,
+    //         cells,
+    //     };
+    //     commands.insert_resource(grid);
+    //     next_state.set(GameState::InGame);
+    // } else {
+    //     panic!("Failed to load level asset");
+    // }
+
+    // simple grid just to test
+    let grid = Grid::new(10, 10, 50.0);
+    commands.insert_resource(grid);
+    next_state.set(GameState::InGame);
 }
 
 fn debug_draw_grid(

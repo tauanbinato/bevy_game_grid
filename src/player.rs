@@ -1,10 +1,11 @@
 use avian2d::{math::*, prelude::*};
 use bevy::prelude::*;
-use crate::grid::Grid;
+use crate::grid::{Grid, GridPlugin};
 use bevy::input::keyboard::KeyCode;
 use bevy::prelude::*;
 use bevy::sprite::{MaterialMesh2dBundle};
 use crate::schedule::InGameSet;
+use crate::state::GameState;
 
 const MOVE_SPEED: f32 = 250.0;
 
@@ -14,9 +15,9 @@ impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(PlayerGridPosition::default())
             .add_event::<InputAction>()
-            .add_systems(PostStartup, spawn_player.in_set(InGameSet::SpawnEntities))
-            .add_systems(Update, keyboard_input.in_set(InGameSet::UserInput))
-            .add_systems(FixedUpdate, movement_system.in_set(InGameSet::EntityUpdates));
+            .add_systems(Startup, spawn_player.run_if(in_state(GameState::InGame)))
+            .add_systems(Update, keyboard_input.run_if(in_state(GameState::InGame)))
+            .add_systems(FixedUpdate, movement_system.run_if(in_state(GameState::InGame)));
     }
 }
 

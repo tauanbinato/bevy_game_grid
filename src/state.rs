@@ -3,6 +3,8 @@ use bevy::prelude::*;
 #[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Hash, States)]
 pub enum GameState {
     #[default]
+    LoadingAssets,
+    BuildingGrid,
     InGame,
     Paused,
     GameOver,
@@ -15,7 +17,6 @@ impl Plugin for StatePlugin {
             Update,
             (
                 game_state_input_events,
-                transition_to_in_game.run_if(in_state(GameState::GameOver)),
             ),
         );
     }
@@ -33,8 +34,4 @@ fn game_state_input_events(
             _ => (),
         }
     }
-}
-
-fn transition_to_in_game(mut next_state: ResMut<NextState<GameState>>) {
-    next_state.set(GameState::InGame);
 }

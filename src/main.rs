@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 use avian2d::{math::*, prelude::*};
+use bevy::app::PluginGroupBuilder;
 use bevy::log::LogPlugin;
 use bevy::window::PresentMode;
 
@@ -19,9 +20,19 @@ use state::StatePlugin;
 use debug::DebugPlugin;
 use assetLoader::AssetLoaderPlugin;
 
+/// A group of plugins that has loading assets involved
+pub struct LoadersPlugins;
+impl PluginGroup for LoadersPlugins {
+    fn build(self) -> PluginGroupBuilder {
+        PluginGroupBuilder::start::<Self>()
+            .add(StatePlugin)
+            .add(SchedulePlugin)
+            .add(AssetLoaderPlugin)
+    }
+}
+
 fn main() {
     App::new()
-
         .add_plugins(DefaultPlugins.set(WindowPlugin {
                 primary_window: Some(Window {
                     title: "My Game Window".into(),
@@ -37,14 +48,10 @@ fn main() {
             })
 
         )
-        .add_plugins(AssetLoaderPlugin)
         .add_plugins(PhysicsPlugins::default().with_length_unit(100.0))
         .insert_resource(Gravity(Vector::ZERO))
-        .add_plugins(GridPlugin)
-        .add_plugins(PlayerPlugin)
-        .add_plugins(OrePlugin)
-        .add_plugins(SchedulePlugin)
-        .add_plugins(StatePlugin)
-        //.add_plugins(DebugPlugin)
+
+        .add_plugins((LoadersPlugins, GridPlugin, PlayerPlugin, OrePlugin, DebugPlugin { enable: false }))
+
         .run();
 }

@@ -7,8 +7,8 @@ edition = "2021"
 bevy = { version = "0.14.1", features = ["dynamic_linking"] }
 avian2d = "0.1"
 iyes_perf_ui = "0.3.0"
-bevy_common_assets = { version = "0.11.0", features = ["json"] }
 serde = { version = "1.0.204", features = ["derive"] }
+thiserror = "1.0.63"
 
 [profile.dev]
 opt-level = 1

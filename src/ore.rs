@@ -4,12 +4,13 @@ use crate::grid::Grid;
 use bevy::prelude::*;
 use bevy::sprite::{MaterialMesh2dBundle};
 use crate::schedule::InGameSet;
+use crate::state::GameState;
 
 pub struct OrePlugin;
 
 impl Plugin for OrePlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(PostStartup, spawn_ore.in_set(InGameSet::SpawnEntities));
+        app.add_systems(Startup, spawn_ore.run_if(in_state(GameState::InGame)));
     }
 }
 

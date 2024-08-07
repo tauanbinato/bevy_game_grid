@@ -3,8 +3,10 @@ use bevy::prelude::Commands;
 use iyes_perf_ui::entries::PerfUiFramerateEntries;
 use iyes_perf_ui::prelude::*;
 
-pub struct DebugPlugin;
-
+#[derive(Default)]
+pub struct DebugPlugin {
+    pub enable: bool,
+}
 impl Plugin for DebugPlugin {
     fn build(&self, app: &mut App) {
             app
@@ -12,8 +14,11 @@ impl Plugin for DebugPlugin {
                 // we want Bevy to measure these values for us:
                 .add_plugins(bevy::diagnostic::FrameTimeDiagnosticsPlugin)
                 .add_plugins(bevy::diagnostic::EntityCountDiagnosticsPlugin)
-                .add_plugins(bevy::diagnostic::SystemInformationDiagnosticsPlugin)
-                .add_systems(Startup, debug_startup);
+                .add_plugins(bevy::diagnostic::SystemInformationDiagnosticsPlugin);
+        if self.enable {
+            app.add_systems(Startup, debug_startup);
+        }
+
     }
 }
 

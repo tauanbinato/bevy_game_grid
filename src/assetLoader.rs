@@ -7,7 +7,10 @@ struct LevelHandle(Handle<Level>);
 
 #[derive(serde::Deserialize, Asset, TypePath)]
 struct Level {
-    positions: Vec<[f32; 3]>,
+    width: u32,
+    height: u32,
+    cell_size: f32,
+    world: Vec<String>,
 }
 
 pub struct AssetLoaderPlugin;

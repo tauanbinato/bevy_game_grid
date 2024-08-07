@@ -36,6 +36,19 @@ pub enum EnvironmentType {
     OuterSpace,
     InsideShip,
     PlanetSurface,
+    Wall,
+}
+
+impl From<char> for EnvironmentType {
+    fn from(c: char) -> Self {
+        match c {
+            'S' => EnvironmentType::InsideShip,
+            'P' => EnvironmentType::PlanetSurface,
+            'E' => EnvironmentType::OuterSpace,
+            '#' => EnvironmentType::Wall,
+            _ => EnvironmentType::OuterSpace,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]

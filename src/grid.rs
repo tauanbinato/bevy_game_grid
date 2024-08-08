@@ -34,34 +34,32 @@ impl Plugin for GridPlugin {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum EnvironmentType {
-    OuterSpace,
-    InsideShip,
-    PlanetSurface,
-    Wall,
+    OuterSpace { gravity: f32 },
+    InsideShip { gravity: f32 },
+    PlanetSurface { gravity: f32 },
+    Wall { gravity: f32 },
 }
 
 impl From<char> for EnvironmentType {
     fn from(c: char) -> Self {
         match c {
-            'S' => EnvironmentType::InsideShip,
-            'P' => EnvironmentType::PlanetSurface,
-            '#' => EnvironmentType::OuterSpace,
-            'W' => EnvironmentType::Wall,
-            _ => EnvironmentType::OuterSpace,
+            'S' => EnvironmentType::InsideShip { gravity: 1.0 },
+            'P' => EnvironmentType::PlanetSurface { gravity: 0.5 },
+            '#' => EnvironmentType::OuterSpace { gravity: 0.0 },
+            'W' => EnvironmentType::Wall { gravity: 0.0 },
+            _ => EnvironmentType::OuterSpace { gravity: 0.0 },
         }
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct GridProperties {
-    pub gravity: f32,
     pub environment: EnvironmentType
 }
 impl Default for GridProperties {
     fn default() -> Self {
         Self {
-            gravity: 1.0,
-            environment: EnvironmentType::InsideShip,
+            environment: EnvironmentType::InsideShip { gravity: 1.0 },
         }
     }
 }
@@ -195,8 +193,7 @@ fn setup_grid(
                         entity: None,
                         color: Srgba::rgb(0.5, 0.5, 0.5),
                         properties: GridProperties {
-                            environment,
-                            ..default()
+                            environment
                         },
                     },
                 );
@@ -213,11 +210,6 @@ fn setup_grid(
     } else {
         panic!("Failed to load level asset");
     }
-
-    // // simple grid just to test
-    // let grid = Grid::new(10, 10, 50.0);
-    // commands.insert_resource(grid);
-    // next_state.set(GameState::InGame);
 }
 
 fn debug_draw_grid(
@@ -298,12 +290,17 @@ fn apply_gravity(
     grid: Res<Grid>,
     time: Res<Time>,
 ) {
-    let damping_factor: f32 = 0.92; // Adjust this value to control the damping effect
+    let damping_factor: f32 = 0.85; // Adjust this value to control the damping effect
 
     for (transform, mut velocity) in &mut query {
         let (grid_x, grid_y) = grid.world_to_grid(transform.translation);
         if let Some(cell) = grid.get(grid_x, grid_y) {
-            let gravity = cell.properties.gravity;
+            let gravity = match cell.properties.environment {
+                EnvironmentType::OuterSpace { gravity } => gravity,
+                EnvironmentType::InsideShip { gravity } => gravity,
+                EnvironmentType::PlanetSurface { gravity } => gravity,
+                EnvironmentType::Wall { gravity } => gravity,
+            };
 
             if gravity == 1.0 {
                 // Apply damping to simulate gravity on a top-down world

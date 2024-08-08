@@ -51,7 +51,7 @@ fn main() {
         .add_plugins(PhysicsPlugins::default().with_length_unit(100.0))
         .insert_resource(Gravity(Vector::ZERO))
 
-        .add_plugins((LoadersPlugins, GridPlugin, PlayerPlugin, OrePlugin, DebugPlugin { enable: false }))
+        .add_plugins((LoadersPlugins, GridPlugin, PlayerPlugin, OrePlugin, DebugPlugin { enable: true }))
 
         .run();
 }

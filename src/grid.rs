@@ -1,14 +1,15 @@
 use bevy::prelude::*;
-use bevy::sprite::{MaterialMesh2dBundle, Mesh2dHandle};
 use std::collections::HashMap;
 use std::process::Command;
-use avian2d::prelude::LinearVelocity;
+use avian2d::collision::Collider;
+use avian2d::prelude::{LinearVelocity, RigidBody};
 use bevy::{
     core::FrameCount,
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
     prelude::*,
     window::{CursorGrabMode, PresentMode, WindowLevel, WindowTheme},
-    color::palettes::css::*
+    color::palettes::css::*,
+    sprite::{MaterialMesh2dBundle, Mesh2dHandle}
 };
 use bevy::asset::ron;
 use crate::assetLoader::{AssetStore, LevelAssetBlob, Level};
@@ -44,9 +45,9 @@ impl From<char> for EnvironmentType {
     fn from(c: char) -> Self {
         match c {
             'S' => EnvironmentType::InsideShip { gravity: 1.0 },
-            'P' => EnvironmentType::PlanetSurface { gravity: 0.5 },
+            'P' => EnvironmentType::PlanetSurface { gravity: 1.0 },
             '#' => EnvironmentType::OuterSpace { gravity: 0.0 },
-            'W' => EnvironmentType::Wall { gravity: 0.0 },
+            'W' => EnvironmentType::Wall { gravity: 1.0 },
             _ => EnvironmentType::OuterSpace { gravity: 0.0 },
         }
     }
@@ -172,7 +173,9 @@ fn setup_grid(
     mut commands: Commands,
     asset_store: Res<AssetStore>,
     blob_assets: Res<Assets<LevelAssetBlob>>,
-    mut next_state: ResMut<NextState<GameState>>
+    mut next_state: ResMut<NextState<GameState>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
     debug!("Setting up grid");
     commands.spawn(Camera2dBundle::default());
@@ -187,13 +190,35 @@ fn setup_grid(
             for (x, cell) in row.chars().enumerate() {
                 let environment = EnvironmentType::from(cell);
 
+                let cell_world_pos = Vec3::new(
+                    (x as f32 * level.cell_size) - (level.width as f32 * level.cell_size) / 2.0 + level.cell_size / 2.0,
+                    (level.height as f32 * level.cell_size) / 2.0 - (y as f32 * level.cell_size) - level.cell_size / 2.0,
+                    0.0,
+                );
+
+                if let EnvironmentType::Wall { .. } = environment {
+                    commands.spawn((
+                        RigidBody::Static,
+                        Collider::rectangle(level.cell_size, level.cell_size),
+                        MaterialMesh2dBundle {
+                            mesh: meshes.add(Rectangle {half_size: Vec2::splat(level.cell_size / 2.0)}).into(),
+                            material: materials.add(Color::from(GREY)),
+                            transform: Transform {
+                                translation: Vec3::new(cell_world_pos.x, cell_world_pos.y, 0.0),
+                                ..default()
+                            },
+                            ..default()
+                        },
+                    ));
+                }
+
                 cells.insert(
                     (x as i32, y as i32),
                     GridCell {
                         entity: None,
                         color: Srgba::rgb(0.5, 0.5, 0.5),
                         properties: GridProperties {
-                            environment
+                            environment,
                         },
                     },
                 );
@@ -290,7 +315,7 @@ fn apply_gravity(
     grid: Res<Grid>,
     time: Res<Time>,
 ) {
-    let damping_factor: f32 = 0.85; // Adjust this value to control the damping effect
+    let damping_factor: f32 = 0.95; // Adjust this value to control the damping effect
 
     for (transform, mut velocity) in &mut query {
         let (grid_x, grid_y) = grid.world_to_grid(transform.translation);

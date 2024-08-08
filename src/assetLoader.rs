@@ -8,6 +8,13 @@ use serde::Deserialize;
 use thiserror::Error;
 use crate::state::GameState;
 
+#[derive(Debug, Deserialize)]
+pub struct Level {
+    pub width: u32,
+    pub height: u32,
+    pub cell_size: f32,
+    pub world: Vec<String>,
+}
 
 #[non_exhaustive]
 #[derive(Debug, Error)]
@@ -19,7 +26,7 @@ enum BlobAssetLoaderError {
 
 #[derive(Asset, TypePath, Debug, Deserialize)]
 pub struct LevelAssetBlob {
-    bytes: Vec<u8>,
+    pub bytes: Vec<u8>,
 }
 
 #[derive(Default)]
@@ -44,8 +51,8 @@ impl AssetLoader for BlobAssetLoader {
 }
 
 #[derive(Resource, Default)]
-struct AssetStore {
-    blob: Handle<LevelAssetBlob>,
+pub struct AssetStore {
+    pub blob: Handle<LevelAssetBlob>,
 }
 
 pub struct AssetLoaderPlugin;

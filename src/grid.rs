@@ -10,6 +10,8 @@ use bevy::{
     window::{CursorGrabMode, PresentMode, WindowLevel, WindowTheme},
     color::palettes::css::*
 };
+use bevy::asset::ron;
+use crate::assetLoader::{AssetStore, LevelAssetBlob, Level};
 use crate::player::{Player, PlayerGridPosition};
 use crate::schedule::{InGameSet};
 use crate::state::GameState;
@@ -43,8 +45,8 @@ impl From<char> for EnvironmentType {
         match c {
             'S' => EnvironmentType::InsideShip,
             'P' => EnvironmentType::PlanetSurface,
-            'E' => EnvironmentType::OuterSpace,
-            '#' => EnvironmentType::Wall,
+            '#' => EnvironmentType::OuterSpace,
+            'W' => EnvironmentType::Wall,
             _ => EnvironmentType::OuterSpace,
         }
     }
@@ -170,59 +172,52 @@ struct MyGridGizmos {}
 
 fn setup_grid(
     mut commands: Commands,
-    //level: Res<LevelHandle>,
-    //mut levels: ResMut<Assets<Level>>,
+    asset_store: Res<AssetStore>,
+    blob_assets: Res<Assets<LevelAssetBlob>>,
     mut next_state: ResMut<NextState<GameState>>
 ) {
     debug!("Setting up grid");
     commands.spawn(Camera2dBundle::default());
 
-    // if let Some(level) = levels.remove(level.0.id()) {
-    //     let mut cells = HashMap::new();
-    //     debug!("Loading level with width: {}, height: {}, cell_size: {}", level.width, level.height, level.cell_size);
-    //     for (y, row) in level.world.iter().enumerate() {
-    //         for (x, cell) in row.chars().enumerate() {
-    //             let environment = EnvironmentType::from(cell);
-    //             let world_pos = Vec3::new(
-    //                 x as f32 * level.cell_size,
-    //                 y as f32 * level.cell_size,
-    //                 0.0,
-    //             );
-    //
-    //             let entity = commands.spawn(SpriteBundle {
-    //                 transform: Transform::from_translation(world_pos),
-    //                 ..default()
-    //             }).id();
-    //
-    //             cells.insert(
-    //                 (x as i32, y as i32),
-    //                 GridCell {
-    //                     entity: Some(entity),
-    //                     color: Srgba::rgb(0.5, 0.5, 0.5),
-    //                     properties: GridProperties {
-    //                         environment,
-    //                         ..default()
-    //                     },
-    //                 },
-    //             );
-    //         }
-    //     }
-    //     let grid = Grid {
-    //         width: level.width,
-    //         height: level.height,
-    //         cell_size: level.cell_size,
-    //         cells,
-    //     };
-    //     commands.insert_resource(grid);
-    //     next_state.set(GameState::InGame);
-    // } else {
-    //     panic!("Failed to load level asset");
-    // }
+    if let Some(blob) = blob_assets.get(&asset_store.blob) {
+        let level_data: String = String::from_utf8(blob.bytes.clone()).expect("Invalid UTF-8 data");
+        let level: Level = serde_json::from_str(&level_data).expect("Failed to deserialize level data");
 
-    // simple grid just to test
-    let grid = Grid::new(10, 10, 50.0);
-    commands.insert_resource(grid);
-    next_state.set(GameState::InGame);
+        let mut cells = HashMap::new();
+        debug!("Loading level with width: {}, height: {}, cell_size: {}", level.width, level.height, level.cell_size);
+        for (y, row) in level.world.iter().enumerate() {
+            for (x, cell) in row.chars().enumerate() {
+                let environment = EnvironmentType::from(cell);
+
+                cells.insert(
+                    (x as i32, y as i32),
+                    GridCell {
+                        entity: None,
+                        color: Srgba::rgb(0.5, 0.5, 0.5),
+                        properties: GridProperties {
+                            environment,
+                            ..default()
+                        },
+                    },
+                );
+            }
+        }
+        let grid = Grid {
+            width: level.width,
+            height: level.height,
+            cell_size: level.cell_size,
+            cells,
+        };
+        commands.insert_resource(grid);
+        next_state.set(GameState::InGame);
+    } else {
+        panic!("Failed to load level asset");
+    }
+
+    // // simple grid just to test
+    // let grid = Grid::new(10, 10, 50.0);
+    // commands.insert_resource(grid);
+    // next_state.set(GameState::InGame);
 }
 
 fn debug_draw_grid(

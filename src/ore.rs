@@ -10,7 +10,7 @@ pub struct OrePlugin;
 
 impl Plugin for OrePlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, spawn_ore.run_if(in_state(GameState::InGame)));
+        app.add_systems(OnEnter(GameState::InGame), spawn_ore);
     }
 }
 

@@ -15,7 +15,7 @@ impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(PlayerGridPosition::default())
             .add_event::<InputAction>()
-            .add_systems(Startup, spawn_player.run_if(in_state(GameState::InGame)))
+            .add_systems(OnEnter(GameState::InGame), spawn_player)
             .add_systems(Update, keyboard_input.run_if(in_state(GameState::InGame)))
             .add_systems(FixedUpdate, movement_system.run_if(in_state(GameState::InGame)));
     }

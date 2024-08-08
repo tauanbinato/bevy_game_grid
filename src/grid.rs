@@ -11,7 +11,7 @@ use bevy::{
     color::palettes::css::*
 };
 use crate::player::{Player, PlayerGridPosition};
-use crate::schedule::{InGameSet, InLoadGridSet};
+use crate::schedule::{InGameSet};
 use crate::state::GameState;
 
 pub struct GridPlugin;
@@ -21,9 +21,9 @@ impl Plugin for GridPlugin {
         app
             .init_gizmo_group::<MyGridGizmos>()
             .add_event::<PlayerGridChangeEvent>()
-            .add_systems(Startup, setup_grid.run_if(in_state(GameState::BuildingGrid)))
-            .add_systems(Update, detect_grid_updates.run_if(in_state(GameState::InGame)))
-            .add_systems(PostUpdate, (debug_draw_grid, debug_draw_rects).chain().run_if(in_state(GameState::InGame)))
+            .add_systems(OnEnter(GameState::BuildingGrid), setup_grid)
+
+            .add_systems(Update, (detect_grid_updates, debug_draw_grid, debug_draw_rects).chain().run_if(in_state(GameState::InGame)))
             .add_systems(FixedUpdate, apply_gravity.run_if(in_state(GameState::InGame)));
 
     }

@@ -1,54 +1,55 @@
+use avian2d::{math::*, prelude::*};
 use bevy::prelude::*;
-use crate::grid::Grid;
+use crate::grid::{Grid, GridPlugin};
 use bevy::input::keyboard::KeyCode;
 use bevy::prelude::*;
 use bevy::sprite::{MaterialMesh2dBundle};
+use crate::schedule::InGameSet;
+use crate::state::GameState;
 
 const MOVE_SPEED: f32 = 250.0;
-
-#[derive(Component, Default)]
-pub struct Velocity {
-    pub x: f32,
-    pub y: f32,
-}
-
-#[derive(Event)]
-pub struct PlayerMovedEvent {
-    pub entity: Entity,
-    pub new_position: Vec3,
-    pub old_position: Vec3,
-}
 
 pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup_player)
-        .add_systems(FixedUpdate, move_player)
-        .add_event::<PlayerMovedEvent>();
+        app.insert_resource(PlayerGridPosition::default())
+            .add_event::<InputAction>()
+            .add_systems(OnEnter(GameState::InGame), spawn_player)
+            .add_systems(Update, keyboard_input.run_if(in_state(GameState::InGame)))
+            .add_systems(FixedUpdate, movement_system.run_if(in_state(GameState::InGame)));
     }
 }
 
 #[derive(Component)]
 pub struct Player;
 
-fn setup_player(
+#[derive(Resource, Default)]
+pub struct PlayerGridPosition {
+    pub grid_position: (i32, i32),
+}
+
+fn spawn_player(
     mut commands: Commands,
     mut materials: ResMut<Assets<ColorMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut grid: ResMut<Grid>,
+    mut player_grid_position: ResMut<PlayerGridPosition>
 ) {
-    let player_grid_position = (0, 0);
-    let player_initial_position = grid.grid_to_world(player_grid_position);
+    let initial_grid_position = (0, 0);
+    let initial_world_position = grid.grid_to_world(initial_grid_position);
+
+    player_grid_position.grid_position = initial_grid_position;
 
     let player_entity = commands.spawn((
+        RigidBody::Dynamic,
+        Collider::circle(10.0),
         Player,
-        Velocity::default(),
         MaterialMesh2dBundle {
             mesh: meshes.add(Circle { radius: 10.0}).into(),
             material: materials.add(ColorMaterial::from(Color::WHITE)),
             transform: Transform {
-                translation: Vec3::new(player_initial_position.x, player_initial_position.y, 1.0),
+                translation: Vec3::new(initial_world_position.x, initial_world_position.y, 1.0),
                 ..default()
             },
             ..default()
@@ -56,54 +57,64 @@ fn setup_player(
     ))
         .id();
 
-    grid.insert(player_grid_position.0, player_grid_position.1, player_entity);
+    grid.insert_new(initial_grid_position.0, initial_grid_position.1, player_entity);
 }
 
 
+/// An event sent for a movement input action.
+#[derive(Event)]
+pub enum InputAction {
+    Move(Vec3),
+}
 
-fn move_player(
-    mut query: Query<(Entity, &mut Transform, &mut Velocity), With<Player>>,
+/// Sends [`MovementAction`] events based on keyboard input.
+fn keyboard_input(
+    mut movement_event_writer: EventWriter<InputAction>,
     keys: Res<ButtonInput<KeyCode>>,
-    time: Res<Time>,
-    mut event_writer: EventWriter<PlayerMovedEvent>,
-    grid: Res<Grid>,
 ) {
-    for (entity, mut transform, mut velocity) in &mut query {
-        let mut direction = Vec3::ZERO;
+    let mut direction = Vec3::ZERO;
 
-        if keys.pressed(KeyCode::KeyW) {
-            direction.y += 1.0;
-        }
-        if keys.pressed(KeyCode::KeyS) {
-            direction.y -= 1.0;
-        }
-        if keys.pressed(KeyCode::KeyA) {
-            direction.x -= 1.0;
-        }
-        if keys.pressed(KeyCode::KeyD) {
-            direction.x += 1.0;
-        }
-
-        if direction.length() > 0.0 {
-            let move_delta = MOVE_SPEED * direction.normalize() * time.delta_seconds();
-            velocity.x += move_delta.x;
-            velocity.y += move_delta.y;
-        }
-
-        // Update the player's position based on its velocity
-        let old_position = transform.translation;
-        transform.translation.x += velocity.x * time.delta_seconds();
-        transform.translation.y += velocity.y * time.delta_seconds();
-
-        // Send the PlayerMovedEvent
-        event_writer.send(PlayerMovedEvent {
-            entity,
-            old_position,
-            new_position: transform.translation,
-        });
-
-        // Apply damping to simulate inertia
-        velocity.x *= 0.98;
-        velocity.y *= 0.98;
+    if keys.pressed(KeyCode::KeyW) {
+        direction.y += 1.0;
     }
+    if keys.pressed(KeyCode::KeyS) {
+        direction.y -= 1.0;
+    }
+    if keys.pressed(KeyCode::KeyA) {
+        direction.x -= 1.0;
+    }
+    if keys.pressed(KeyCode::KeyD) {
+        direction.x += 1.0;
+    }
+
+    if direction.length() > 0.0 {
+        movement_event_writer.send(InputAction::Move(direction.normalize()));
+    }
+}
+fn movement_system(
+    mut query: Query<(&mut LinearVelocity), With<Player>>,
+    mut input_reader: EventReader<InputAction>,
+    time: Res<Time>
+) {
+    // Precision is adjusted so that the example works with
+    // both the `f32` and `f64` features. Otherwise you don't need this.
+    let delta_time = time.delta_seconds();
+
+
+    for event in input_reader.read() {
+
+        for (mut velocity) in &mut query {
+
+            match event {
+                InputAction::Move(direction) => {
+                    velocity.x += direction.x * MOVE_SPEED * delta_time;
+                    velocity.y += direction.y * MOVE_SPEED * delta_time;
+
+                }
+                _ => {}
+            }
+        }
+    }
+
+
 }

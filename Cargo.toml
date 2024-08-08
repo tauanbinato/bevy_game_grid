@@ -4,7 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bevy = { version = "*", features = ["dynamic_linking"] }
+bevy = { version = "0.14.1", features = ["dynamic_linking"] }
+avian2d = "0.1"
+iyes_perf_ui = "0.3.0"
+serde = { version = "1.0.204", features = ["derive"] }
+thiserror = "1.0.63"
+serde_json = "1.0.122"
 
 [profile.dev]
 opt-level = 1

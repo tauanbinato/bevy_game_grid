@@ -1,0 +1,17 @@
+{
+  "width": 10,
+  "height": 10,
+  "cell_size": 50.0,
+  "world": [
+    "WWWWWWWWWW",
+    "WSSSSSSSSW",
+    "WSSSSSSSSW",
+    "WSSSSSSSSW",
+    "SSSSSSSSSW",
+    "SSSSSSWSSW",
+    "WSSSSSSSSW",
+    "WSSSSSSSSW",
+    "WSSSSSSSSW",
+    "WWWWWWWWWW"
+  ]
+}

@@ -36,7 +36,7 @@ fn spawn_player(
     mut grid: ResMut<Grid>,
     mut player_grid_position: ResMut<PlayerGridPosition>
 ) {
-    let initial_grid_position = (0, 0);
+    let initial_grid_position = (2, 2);
     let initial_world_position = grid.grid_to_world(initial_grid_position);
 
     player_grid_position.grid_position = initial_grid_position;

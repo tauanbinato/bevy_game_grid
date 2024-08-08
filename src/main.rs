@@ -11,6 +11,7 @@ mod schedule;
 mod state;
 mod debug;
 mod assetLoader;
+mod structures;
 
 use grid::GridPlugin;
 use player::PlayerPlugin;

@@ -24,7 +24,7 @@ impl Plugin for GridPlugin {
         app
             .init_gizmo_group::<MyGridGizmos>()
             .add_event::<PlayerGridChangeEvent>()
-            .add_systems(OnEnter(GameState::BuildingGrid), setup_grid)
+            .add_systems(OnEnter(GameState::BuildingGrid), setup_grid_from_file)
 
             .add_systems(Update, (detect_grid_updates, debug_draw_grid, debug_draw_rects).chain().run_if(in_state(GameState::InGame)))
             .add_systems(FixedUpdate, apply_gravity.run_if(in_state(GameState::InGame)));
@@ -169,7 +169,7 @@ impl Grid {
 #[derive(Default, Reflect, GizmoConfigGroup)]
 struct MyGridGizmos {}
 
-fn setup_grid(
+fn setup_grid_from_file(
     mut commands: Commands,
     asset_store: Res<AssetStore>,
     blob_assets: Res<Assets<LevelAssetBlob>>,

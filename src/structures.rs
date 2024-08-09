@@ -1,7 +1,12 @@
-use bevy::app::{App, FixedUpdate, Plugin, Update};
-use bevy::prelude::{in_state, OnEnter};
+use bevy::app::{App, Plugin, Update};
+use bevy::prelude::{Assets, Circle, ColorMaterial, Commands, Component, default, Gizmos, in_state, Mesh, OnEnter, Query, ResMut, Transform, Vec2};
 use crate::state::GameState;
-use std::collections::HashMap;
+use avian2d::prelude::RigidBody;
+use bevy::color::Color;
+use bevy::color::palettes::css::*;
+use bevy::math::Vec3;
+use bevy::sprite::MaterialMesh2dBundle;
+use crate::grid::Grid;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ModuleType {
@@ -29,20 +34,33 @@ impl Module {
     }
 }
 
-#[derive(Debug, Clone)]
+
+#[derive(Component)]
 pub struct Structure {
-    pub modules: HashMap<(i32, i32), Module>,
+    pub grid: Grid<Module>,
+    pub universe_pos: Transform,
+    pub universe_rotation: f32,
 }
 
 impl Structure {
-    pub fn new() -> Self {
+    pub fn new(width: u32, height: u32, cell_size: f32) -> Self {
         Self {
-            modules: HashMap::new(),
+            grid: Grid::new(width, height, cell_size),
+            universe_pos: Transform::from_translation(Vec3::ZERO),
+            universe_rotation: 0.0,
         }
     }
 
     pub fn add_module(&mut self, x: i32, y: i32, module: Module) {
-        self.modules.insert((x, y), module);
+        self.grid.insert_new(x, y, module);
+    }
+
+    pub fn set_position(&mut self, position: Vec2) {
+        self.universe_pos = Transform::from_translation(Vec3::new(position.x, position.y, 0.0));
+    }
+
+    pub fn set_rotation(&mut self, rotation: f32) {
+        self.universe_rotation = rotation;
     }
 }
 
@@ -51,9 +69,9 @@ pub struct SpaceshipBuilder {
 }
 
 impl SpaceshipBuilder {
-    pub fn new() -> Self {
+    pub fn new(width: u32, height: u32, cell_size: f32) -> Self {
         Self {
-            structure: Structure::new(),
+            structure: Structure::new(width, height, cell_size),
         }
     }
 
@@ -82,14 +100,37 @@ impl SpaceshipBuilder {
         self
     }
 
+    pub fn set_position(mut self, position: Vec2) -> Self {
+        self.structure.set_position(position);
+        self
+    }
+
+    pub fn set_rotation(mut self, rotation: f32) -> Self {
+        self.structure.set_rotation(rotation);
+        self
+    }
+
     pub fn build(self) -> Structure {
         self.structure
     }
 }
 
+
+pub struct StructuresPlugin;
+
+impl Plugin for StructuresPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(OnEnter(GameState::InGame), spawn_ship)
+            .add_systems(Update, debug_draw_structure_grid);
+    }
+}
+
 fn spawn_ship(
+    mut commands: Commands,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    mut meshes: ResMut<Assets<Mesh>>,
 ) {
-    let spaceship = SpaceshipBuilder::new()
+    let mut spaceship = SpaceshipBuilder::new(3, 3, 50.0)
         .add_command_center(0, 0)
         .add_engine(1, 0)
         .add_living_quarters(0, 1)
@@ -97,12 +138,40 @@ fn spawn_ship(
         .add_weapon(2, 0)
         .build();
 
+    spaceship.set_position(Vec2::new(500.0, 50.0));
+
+    let spaceship = commands.spawn(spaceship).id();
 }
 
-pub struct StructuresPlugin;
+fn debug_draw_structure_grid(
+    mut gizmos: Gizmos,
+    query: Query<&Structure>,
+) {
+    for structure in &query {
+        let grid = &structure.grid;
+        let universe_pos = structure.universe_pos.translation;
 
-impl Plugin for StructuresPlugin {
-    fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(GameState::InGame), spawn_ship);
+        for ((x, y), cell) in &grid.cells {
+
+            let mut world_pos = grid.grid_to_world((*x, *y));
+            world_pos += universe_pos;
+            let mut color = GREY;
+            if let Some(module) = &cell.data {
+                color  = match module.module_type {
+                    ModuleType::Engine => RED,
+                    ModuleType::CommandCenter => BLUE,
+                    ModuleType::LivingQuarters => GREEN,
+                    ModuleType::Storage => YELLOW,
+                    ModuleType::Weapon => PURPLE,
+                };
+            }
+
+            gizmos.rect_2d(
+                Vec2::new(world_pos.x, world_pos.y),
+                0.0,
+                Vec2::splat(grid.cell_size * 0.95),
+                color,
+            );
+        }
     }
 }

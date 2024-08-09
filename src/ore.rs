@@ -21,7 +21,7 @@ fn spawn_ore(
     mut commands: Commands,
     mut materials: ResMut<Assets<ColorMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut grid: ResMut<Grid>,
+    mut grid: ResMut<Grid<Entity>>,
 ) {
     let ore_grid_position = (5, 5);
     let ore_initial_position = grid.grid_to_world(ore_grid_position);

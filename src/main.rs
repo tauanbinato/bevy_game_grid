@@ -20,6 +20,7 @@ use schedule::SchedulePlugin;
 use state::StatePlugin;
 use debug::DebugPlugin;
 use assetLoader::AssetLoaderPlugin;
+use crate::structures::StructuresPlugin;
 
 /// A group of plugins that has loading assets involved
 pub struct LoadersPlugins;
@@ -52,7 +53,7 @@ fn main() {
         .add_plugins(PhysicsPlugins::default().with_length_unit(100.0))
         .insert_resource(Gravity(Vector::ZERO))
 
-        .add_plugins((LoadersPlugins, GridPlugin, PlayerPlugin, OrePlugin, DebugPlugin { enable: true }))
+        .add_plugins((LoadersPlugins, GridPlugin, PlayerPlugin, StructuresPlugin, OrePlugin, DebugPlugin { enable: true }))
 
         .run();
 }

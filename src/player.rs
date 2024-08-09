@@ -33,7 +33,7 @@ fn spawn_player(
     mut commands: Commands,
     mut materials: ResMut<Assets<ColorMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut grid: ResMut<Grid>,
+    mut grid: ResMut<Grid<Entity>>,
     mut player_grid_position: ResMut<PlayerGridPosition>
 ) {
     let initial_grid_position = (2, 2);

@@ -66,30 +66,31 @@ impl Default for GridProperties {
 }
 
 #[derive(Resource)]
-pub struct Grid {
+pub struct Grid<T> {
     pub width: u32,
     pub height: u32,
     pub cell_size: f32,
-    pub cells: HashMap<(i32, i32), GridCell>,
+    pub cells: HashMap<(i32, i32), GridCell<T>>,
 }
 
 #[derive(Debug, Resource)]
-pub struct GridCell {
-    pub entity: Option<Entity>,
+pub struct GridCell<T> {
+    pub data: Option<T>,
     pub color: Srgba,
     pub properties: GridProperties,
 }
-impl Default for GridCell {
+impl<T> Default for GridCell<T> {
     fn default() -> Self {
         Self {
-            entity: None,
+            data: None,
             color: Srgba::rgb(0.5, 0.5, 0.5),
             properties: GridProperties::default(),
         }
     }
 }
 
-impl Grid {
+impl<T> Grid<T> {
+    #[deprecated]
     pub fn new(width: u32, height: u32, cell_size: f32) -> Self {
         let mut cells = HashMap::new();
         for x in 0..width {
@@ -105,15 +106,15 @@ impl Grid {
         }
     }
 
-    pub fn insert_new(&mut self, x: i32, y: i32, entity: Entity) {
-        self.cells.insert((x, y), GridCell { entity: Some(entity), color: Srgba::rgb(0.5, 0.5, 0.5), properties: GridProperties::default() });
+    pub fn insert_new(&mut self, x: i32, y: i32, data: T) {
+        self.cells.insert((x, y), GridCell { data: Some(data), color: Srgba::rgb(0.5, 0.5, 0.5), properties: GridProperties::default() });
     }
 
-    pub fn get(&self, x: i32, y: i32) -> Option<&GridCell> {
+    pub fn get(&self, x: i32, y: i32) -> Option<&GridCell<T>> {
         self.cells.get(&(x, y))
     }
 
-    pub fn get_mut(&mut self, x: i32, y: i32) -> Option<&mut GridCell> {
+    pub fn get_mut(&mut self, x: i32, y: i32) -> Option<&mut GridCell<T>> {
         self.cells.get_mut(&(x, y))
     }
 
@@ -123,19 +124,19 @@ impl Grid {
 
     fn remove_entity_from_cell(&mut self, x: i32, y: i32) {
         if let Some(cell) = self.cells.get_mut(&(x, y)) {
-            cell.entity = None;
+            cell.data = None;
         }
     }
 
-    fn insert_entity_in_cell(&mut self, x: i32, y: i32, entity: Entity) {
+    fn insert_entity_in_cell(&mut self, x: i32, y: i32, data: T) {
         if let Some(cell) = self.cells.get_mut(&(x, y)) {
-            cell.entity = Some(entity);
+            cell.data = Some(data);
         }
     }
 
-    pub fn update_entity_position(&mut self, entity: Entity, new_x: i32, new_y: i32, old_X: i32, old_y: i32) {
+    pub fn update_data_position(&mut self, data: T, new_x: i32, new_y: i32, old_X: i32, old_y: i32) {
         self.remove_entity_from_cell(old_X, old_y);
-        self.insert_entity_in_cell(new_x, new_y, entity);
+        self.insert_entity_in_cell(new_x, new_y, data);
     }
 
     pub fn world_to_grid(&self, world_pos: Vec3) -> (i32, i32) {
@@ -215,7 +216,7 @@ fn setup_grid_from_file(
                 cells.insert(
                     (x as i32, y as i32),
                     GridCell {
-                        entity: None,
+                        data: None,
                         color: Srgba::rgb(0.5, 0.5, 0.5),
                         properties: GridProperties {
                             environment,
@@ -224,7 +225,7 @@ fn setup_grid_from_file(
                 );
             }
         }
-        let grid = Grid {
+        let grid: Grid<Entity> = Grid {
             width: level.width,
             height: level.height,
             cell_size: level.cell_size,
@@ -239,7 +240,7 @@ fn setup_grid_from_file(
 
 fn debug_draw_grid(
     mut gizmos: Gizmos,
-    grid: Res<Grid>
+    grid: Res<Grid<Entity>>
 ) {
     // Another way to draw the grid
     gizmos.grid_2d(
@@ -254,7 +255,7 @@ fn debug_draw_grid(
 
 fn debug_draw_rects(
     mut gizmos: Gizmos,
-    grid: Res<Grid>,
+    grid: Res<Grid<Entity>>,
     query: Query<&Transform, With<Player>>,
 ) {
 
@@ -284,7 +285,7 @@ pub struct PlayerGridChangeEvent {
 
 fn detect_grid_updates(
     query: Query<(Entity, &Transform), With<Player>>,
-    mut grid: ResMut<Grid>,
+    mut grid: ResMut<Grid<Entity>>,
     mut event_writer: EventWriter<PlayerGridChangeEvent>,
     mut player_grid_position: ResMut<PlayerGridPosition>,
 ) {
@@ -306,13 +307,13 @@ fn detect_grid_updates(
             player_grid_position.grid_position = (updated_grid_x, updated_grid_y);
 
             // Update the grid with the new player position
-            grid.update_entity_position(entity, updated_grid_x, updated_grid_y, old_grid_x, old_grid_y);
+            grid.update_data_position(entity, updated_grid_x, updated_grid_y, old_grid_x, old_grid_y);
         }
     }
 }
 fn apply_gravity(
     mut query: Query<(&Transform, &mut LinearVelocity)>,
-    grid: Res<Grid>,
+    grid: Res<Grid<Entity>>,
     time: Res<Time>,
 ) {
     let damping_factor: f32 = 0.95; // Adjust this value to control the damping effect

@@ -1,11 +1,8 @@
 use bevy::app::{App, Plugin, Update};
-use bevy::prelude::{Assets, Circle, ColorMaterial, Commands, Component, default, Gizmos, in_state, IntoSystemConfigs, Mesh, OnEnter, Query, ResMut, Transform, Vec2, With};
+use bevy::prelude::{Assets, ColorMaterial, Commands, Component, Gizmos, in_state, IntoSystemConfigs, Mesh, OnEnter, Query, ResMut, Transform, Vec2, With};
 use crate::state::GameState;
-use avian2d::prelude::RigidBody;
-use bevy::color::Color;
 use bevy::color::palettes::css::*;
 use bevy::math::Vec3;
-use bevy::sprite::MaterialMesh2dBundle;
 use crate::grid::Grid;
 use crate::player::Player;
 
@@ -21,16 +18,12 @@ pub enum ModuleType {
 #[derive(Debug, Clone)]
 pub struct Module {
     pub module_type: ModuleType,
-    pub health: f32,
-    pub power_consumption: f32,
 }
 
 impl Module {
-    pub fn new(module_type: ModuleType, health: f32, power_consumption: f32) -> Self {
+    pub fn new(module_type: ModuleType) -> Self {
         Self {
             module_type,
-            health,
-            power_consumption,
         }
     }
 }
@@ -40,7 +33,6 @@ impl Module {
 pub struct Structure {
     pub grid: Grid<Module>,
     pub universe_pos: Transform,
-    pub universe_rotation: f32,
 }
 
 impl Structure {
@@ -48,7 +40,6 @@ impl Structure {
         Self {
             grid: Grid::new(width, height, cell_size),
             universe_pos: Transform::from_translation(Vec3::ZERO),
-            universe_rotation: 0.0,
         }
     }
 
@@ -58,10 +49,6 @@ impl Structure {
 
     pub fn set_position(&mut self, position: Vec2) {
         self.universe_pos = Transform::from_translation(Vec3::new(position.x, position.y, 0.0));
-    }
-
-    pub fn set_rotation(&mut self, rotation: f32) {
-        self.universe_rotation = rotation;
     }
 }
 
@@ -77,27 +64,27 @@ impl SpaceshipBuilder {
     }
 
     pub fn add_engine(mut self, x: i32, y: i32) -> Self {
-        self.structure.add_module(x, y, Module::new(ModuleType::Engine, 100.0, 20.0));
+        self.structure.add_module(x, y, Module::new(ModuleType::Engine));
         self
     }
 
     pub fn add_command_center(mut self, x: i32, y: i32) -> Self {
-        self.structure.add_module(x, y, Module::new(ModuleType::CommandCenter, 100.0, 10.0));
+        self.structure.add_module(x, y, Module::new(ModuleType::CommandCenter));
         self
     }
 
     pub fn add_living_quarters(mut self, x: i32, y: i32) -> Self {
-        self.structure.add_module(x, y, Module::new(ModuleType::LivingQuarters, 100.0, 5.0));
+        self.structure.add_module(x, y, Module::new(ModuleType::LivingQuarters));
         self
     }
 
     pub fn add_storage(mut self, x: i32, y: i32) -> Self {
-        self.structure.add_module(x, y, Module::new(ModuleType::Storage, 100.0, 5.0));
+        self.structure.add_module(x, y, Module::new(ModuleType::Storage));
         self
     }
 
     pub fn add_weapon(mut self, x: i32, y: i32) -> Self {
-        self.structure.add_module(x, y, Module::new(ModuleType::Weapon, 100.0, 15.0));
+        self.structure.add_module(x, y, Module::new(ModuleType::Weapon));
         self
     }
 
@@ -106,30 +93,29 @@ impl SpaceshipBuilder {
         self
     }
 
-    pub fn set_rotation(mut self, rotation: f32) -> Self {
-        self.structure.set_rotation(rotation);
-        self
-    }
-
     pub fn build(self) -> Structure {
         self.structure
     }
 }
 
-
-pub struct StructuresPlugin;
+#[derive(Default)]
+pub struct StructuresPlugin {
+    pub(crate) debug_enable: bool,
+}
 
 impl Plugin for StructuresPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(GameState::InGame), spawn_ship)
-            .add_systems(Update, (debug_draw_structure_grid, debug_draw_player_in_structure,).chain().run_if(in_state(GameState::InGame)));
+        app.add_systems(OnEnter(GameState::InGame), spawn_ship);
+
+        if self.debug_enable {
+            app.add_systems(Update, (debug_draw_structure_grid,
+                                     debug_draw_player_in_structure).chain().run_if(in_state(GameState::InGame)));
+        }
     }
 }
 
 fn spawn_ship(
     mut commands: Commands,
-    mut materials: ResMut<Assets<ColorMaterial>>,
-    mut meshes: ResMut<Assets<Mesh>>,
 ) {
     let mut spaceship = SpaceshipBuilder::new(3, 3, 50.0)
         .add_command_center(0, 0)

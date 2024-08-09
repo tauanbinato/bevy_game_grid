@@ -6,7 +6,6 @@ use crate::state::GameState;
 pub enum InGameSet {
     UserInput,
     EntityUpdates,
-    EntityReads,
     CollisionDetection,
     DespawnEntities,
     SpawnEntities,

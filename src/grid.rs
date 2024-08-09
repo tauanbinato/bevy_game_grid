@@ -12,12 +12,15 @@ use bevy::{
     sprite::{MaterialMesh2dBundle, Mesh2dHandle}
 };
 use bevy::asset::ron;
-use crate::assetLoader::{AssetStore, LevelAssetBlob, Level};
+use crate::asset_loader::{AssetStore, LevelAssetBlob, Level};
 use crate::player::{Player, PlayerGridPosition};
 use crate::schedule::{InGameSet};
 use crate::state::GameState;
 
-pub struct GridPlugin;
+#[derive(Default)]
+pub struct GridPlugin {
+    pub debug_enable: bool,
+}
 
 impl Plugin for GridPlugin {
     fn build(&self, app: &mut App) {
@@ -25,9 +28,12 @@ impl Plugin for GridPlugin {
             .init_gizmo_group::<MyGridGizmos>()
             .add_event::<PlayerGridChangeEvent>()
             .add_systems(OnEnter(GameState::BuildingGrid), setup_grid_from_file)
+            .add_systems(FixedUpdate, apply_gravity.run_if(in_state(GameState::InGame)))
+            .add_systems(Update, detect_grid_updates.run_if(in_state(GameState::InGame)));
 
-            .add_systems(Update, (detect_grid_updates, debug_draw_grid, debug_draw_rects).chain().run_if(in_state(GameState::InGame)))
-            .add_systems(FixedUpdate, apply_gravity.run_if(in_state(GameState::InGame)));
+        if self.debug_enable {
+            app.add_systems(Update, (detect_grid_updates, debug_draw_grid, debug_draw_rects).chain().run_if(in_state(GameState::InGame)));
+        }
 
     }
 }
@@ -114,13 +120,6 @@ impl<T> Grid<T> {
         self.cells.get(&(x, y))
     }
 
-    pub fn get_mut(&mut self, x: i32, y: i32) -> Option<&mut GridCell<T>> {
-        self.cells.get_mut(&(x, y))
-    }
-
-    fn clear_cell(&mut self, x: i32, y: i32) {
-        self.cells.remove(&(x, y));
-    }
 
     fn remove_entity_from_cell(&mut self, x: i32, y: i32) {
         if let Some(cell) = self.cells.get_mut(&(x, y)) {
@@ -134,8 +133,8 @@ impl<T> Grid<T> {
         }
     }
 
-    pub fn update_data_position(&mut self, data: T, new_x: i32, new_y: i32, old_X: i32, old_y: i32) {
-        self.remove_entity_from_cell(old_X, old_y);
+    pub fn update_data_position(&mut self, data: T, new_x: i32, new_y: i32, old_x: i32, old_y: i32) {
+        self.remove_entity_from_cell(old_x, old_y);
         self.insert_entity_in_cell(new_x, new_y, data);
     }
 
@@ -158,12 +157,6 @@ impl<T> Grid<T> {
             half_height - grid_pos.1 as f32 * self.cell_size - self.cell_size / 2.0,
             0.0,
         )
-    }
-
-    pub fn color_cell(&mut self, x: i32, y: i32, color: Srgba) {
-        if let Some(cell) = self.cells.get_mut(&(x, y)) {
-            cell.color = color;
-        }
     }
 }
 
@@ -314,7 +307,6 @@ fn detect_grid_updates(
 fn apply_gravity(
     mut query: Query<(&Transform, &mut LinearVelocity)>,
     grid: Res<Grid<Entity>>,
-    time: Res<Time>,
 ) {
     let damping_factor: f32 = 0.95; // Adjust this value to control the damping effect
 

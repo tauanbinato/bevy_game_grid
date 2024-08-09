@@ -73,7 +73,7 @@ fn setup(mut state: ResMut<AssetStore>, asset_server: Res<AssetServer>) {
 }
 
 fn print_on_load(
-    mut state: ResMut<AssetStore>,
+    state: ResMut<AssetStore>,
     blob_assets: Res<Assets<LevelAssetBlob>>,
     mut next_state: ResMut<NextState<GameState>>
 ) {

@@ -7,7 +7,6 @@ pub enum GameState {
     BuildingGrid,
     InGame,
     Paused,
-    GameOver,
 }
 
 pub struct StatePlugin;

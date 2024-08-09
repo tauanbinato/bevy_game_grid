@@ -1,10 +1,10 @@
-use avian2d::{math::*, prelude::*};
+use avian2d::{prelude::*};
 use bevy::prelude::*;
-use crate::grid::{Grid, GridPlugin};
+use crate::grid::{Grid};
 use bevy::input::keyboard::KeyCode;
 use bevy::prelude::*;
 use bevy::sprite::{MaterialMesh2dBundle};
-use crate::schedule::InGameSet;
+
 use crate::state::GameState;
 
 const MOVE_SPEED: f32 = 250.0;
@@ -92,18 +92,16 @@ fn keyboard_input(
     }
 }
 fn movement_system(
-    mut query: Query<(&mut LinearVelocity), With<Player>>,
+    mut query: Query<&mut LinearVelocity, With<Player>>,
     mut input_reader: EventReader<InputAction>,
     time: Res<Time>
 ) {
-    // Precision is adjusted so that the example works with
-    // both the `f32` and `f64` features. Otherwise you don't need this.
     let delta_time = time.delta_seconds();
 
 
     for event in input_reader.read() {
 
-        for (mut velocity) in &mut query {
+        for mut velocity in &mut query {
 
             match event {
                 InputAction::Move(direction) => {
@@ -111,7 +109,6 @@ fn movement_system(
                     velocity.y += direction.y * MOVE_SPEED * delta_time;
 
                 }
-                _ => {}
             }
         }
     }

@@ -10,7 +10,7 @@ mod ore;
 mod schedule;
 mod state;
 mod debug;
-mod assetLoader;
+mod asset_loader;
 mod structures;
 
 use grid::GridPlugin;
@@ -19,7 +19,7 @@ use ore::OrePlugin;
 use schedule::SchedulePlugin;
 use state::StatePlugin;
 use debug::DebugPlugin;
-use assetLoader::AssetLoaderPlugin;
+use asset_loader::AssetLoaderPlugin;
 use crate::structures::StructuresPlugin;
 
 /// A group of plugins that has loading assets involved
@@ -53,7 +53,7 @@ fn main() {
         .add_plugins(PhysicsPlugins::default().with_length_unit(100.0))
         .insert_resource(Gravity(Vector::ZERO))
 
-        .add_plugins((LoadersPlugins, GridPlugin, PlayerPlugin, StructuresPlugin, OrePlugin, DebugPlugin { enable: true }))
+        .add_plugins((LoadersPlugins, GridPlugin { debug_enable: true }, PlayerPlugin, StructuresPlugin { debug_enable: true }, OrePlugin, DebugPlugin { enable: true }))
 
         .run();
 }

@@ -1,5 +1,4 @@
 use avian2d::{prelude::*};
-use bevy::prelude::*;
 use crate::grid::{Grid};
 use bevy::input::keyboard::KeyCode;
 use bevy::prelude::*;
@@ -65,16 +64,22 @@ fn spawn_player(
 #[derive(Event)]
 pub enum InputAction {
     Move(Vec3),
+    SpacePressed,
 }
 
-/// Sends [`MovementAction`] events based on keyboard input.
 fn keyboard_input(
     mut movement_event_writer: EventWriter<InputAction>,
     keys: Res<ButtonInput<KeyCode>>,
 ) {
+
+    if keys.just_released(KeyCode::Space) {
+        movement_event_writer.send(InputAction::SpacePressed);
+    }
+
     let mut direction = Vec3::ZERO;
 
     if keys.pressed(KeyCode::KeyW) {
+
         direction.y += 1.0;
     }
     if keys.pressed(KeyCode::KeyS) {
@@ -86,10 +91,11 @@ fn keyboard_input(
     if keys.pressed(KeyCode::KeyD) {
         direction.x += 1.0;
     }
-
     if direction.length() > 0.0 {
         movement_event_writer.send(InputAction::Move(direction.normalize()));
     }
+
+
 }
 fn movement_system(
     mut query: Query<&mut LinearVelocity, With<Player>>,
@@ -107,8 +113,8 @@ fn movement_system(
                 InputAction::Move(direction) => {
                     velocity.x += direction.x * MOVE_SPEED * delta_time;
                     velocity.y += direction.y * MOVE_SPEED * delta_time;
-
                 }
+                _ => {}
             }
         }
     }

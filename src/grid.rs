@@ -12,14 +12,21 @@ use bevy::{
     sprite::{MaterialMesh2dBundle, Mesh2dHandle}
 };
 use bevy::asset::ron;
-use crate::asset_loader::{AssetStore, LevelAssetBlob, Level};
+use crate::asset_loader::{AssetStore, AssetBlob, Level};
 use crate::player::{Player, PlayerGridPosition};
 use crate::schedule::{InGameSet};
 use crate::state::GameState;
+use crate::structures::{ModuleType};
 
 #[derive(Default)]
 pub struct GridPlugin {
     pub debug_enable: bool,
+}
+
+// A Resource that holds a vector of structures grid
+#[derive(Resource, Default)]
+pub struct StructuresGrid {
+    pub grids: Vec<Grid<ModuleType>>,
 }
 
 impl Plugin for GridPlugin {
@@ -59,7 +66,7 @@ impl From<char> for EnvironmentType {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct GridProperties {
     pub environment: EnvironmentType
 }
@@ -71,7 +78,7 @@ impl Default for GridProperties {
     }
 }
 
-#[derive(Resource)]
+#[derive(Resource, Default)]
 pub struct Grid<T> {
     pub width: u32,
     pub height: u32,
@@ -166,15 +173,14 @@ struct MyGridGizmos {}
 fn setup_grid_from_file(
     mut commands: Commands,
     asset_store: Res<AssetStore>,
-    blob_assets: Res<Assets<LevelAssetBlob>>,
+    blob_assets: Res<Assets<AssetBlob>>,
     mut next_state: ResMut<NextState<GameState>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
-    debug!("Setting up grid");
     commands.spawn(Camera2dBundle::default());
 
-    if let Some(blob) = blob_assets.get(&asset_store.blob) {
+    if let Some(blob) = blob_assets.get(&asset_store.level_blob) {
         let level_data: String = String::from_utf8(blob.bytes.clone()).expect("Invalid UTF-8 data");
         let level: Level = serde_json::from_str(&level_data).expect("Failed to deserialize level data");
 
@@ -225,7 +231,7 @@ fn setup_grid_from_file(
             cells,
         };
         commands.insert_resource(grid);
-        next_state.set(GameState::InGame);
+        next_state.set(GameState::BuildingStructures);
     } else {
         panic!("Failed to load level asset");
     }
@@ -289,7 +295,7 @@ fn detect_grid_updates(
         let (old_grid_x, old_grid_y) = player_grid_position.grid_position;
 
         if (old_grid_x, old_grid_y) != (updated_grid_x, updated_grid_y) {
-            debug!("Player moved from ({}, {}) to ({}, {})", old_grid_x, old_grid_y, updated_grid_x, updated_grid_y);
+            // debug!("Player moved from ({}, {}) to ({}, {})", old_grid_x, old_grid_y, updated_grid_x, updated_grid_y);
             event_writer.send(PlayerGridChangeEvent {
                 entity,
                 old_cell: (old_grid_x, old_grid_y),

@@ -45,7 +45,7 @@ fn main() {
                 }),
                 ..default()
             }).set(LogPlugin {
-                filter: "info,my_game::grid=debug".into(),
+                filter: "info,my_game::player=debug,my_game::grid=debug,my_game::structure=debug".into(),
                 ..default()
             })
 

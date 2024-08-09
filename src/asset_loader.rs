@@ -16,6 +16,11 @@ pub struct Level {
     pub world: Vec<String>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct StructuresData {
+    pub structures: Vec<Vec<String>>,
+}
+
 #[non_exhaustive]
 #[derive(Debug, Error)]
 enum BlobAssetLoaderError {
@@ -25,14 +30,14 @@ enum BlobAssetLoaderError {
 }
 
 #[derive(Asset, TypePath, Debug, Deserialize)]
-pub struct LevelAssetBlob {
+pub struct AssetBlob {
     pub bytes: Vec<u8>,
 }
 
 #[derive(Default)]
 struct BlobAssetLoader;
 impl AssetLoader for BlobAssetLoader {
-    type Asset = LevelAssetBlob;
+    type Asset = AssetBlob;
     type Settings = ();
     type Error = BlobAssetLoaderError;
 
@@ -46,20 +51,21 @@ impl AssetLoader for BlobAssetLoader {
         let mut bytes = Vec::new();
         reader.read_to_end(&mut bytes).await?;
 
-        Ok(LevelAssetBlob { bytes })
+        Ok(AssetBlob { bytes })
     }
 }
 
 #[derive(Resource, Default)]
 pub struct AssetStore {
-    pub blob: Handle<LevelAssetBlob>,
+    pub level_blob: Handle<AssetBlob>,
+    pub structures_blob: Handle<AssetBlob>,
 }
 
 pub struct AssetLoaderPlugin;
 impl Plugin for AssetLoaderPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<AssetStore>()
-            .init_asset::<LevelAssetBlob>()
+            .init_asset::<AssetBlob>()
             .init_asset_loader::<BlobAssetLoader>()
             .add_systems(PreStartup, setup)
             .add_systems(Update, print_on_load.run_if(in_state(GameState::LoadingAssets)));
@@ -69,21 +75,26 @@ impl Plugin for AssetLoaderPlugin {
 fn setup(mut state: ResMut<AssetStore>, asset_server: Res<AssetServer>) {
 
     // Will use BlobAssetLoader instead of CustomAssetLoader thanks to type inference
-    state.blob = asset_server.load("data/level.json");
+    state.level_blob = asset_server.load("data/level.json");
+
+    state.structures_blob = asset_server.load("data/structures.json");
 }
 
 fn print_on_load(
     state: ResMut<AssetStore>,
-    blob_assets: Res<Assets<LevelAssetBlob>>,
+    blob_assets: Res<Assets<AssetBlob>>,
     mut next_state: ResMut<NextState<GameState>>
 ) {
-    let blob = blob_assets.get(&state.blob);
+    let level_blob = blob_assets.get(&state.level_blob);
+    let structures_blob = blob_assets.get(&state.structures_blob);
 
-    if blob.is_none() {
-        info!("Blob Not Ready");
+    if level_blob.is_none() && structures_blob.is_none() {
+        info!("Blobs Not Ready");
         return;
     }
-    info!("Level Blob Loaded, Size: {:?} Bytes", blob.unwrap().bytes.len());
+    info!("Level Blob Loaded, Size: {:?} Bytes", level_blob.unwrap().bytes.len());
+    info!("Structures Blob Loaded, Size: {:?} Bytes", structures_blob.unwrap().bytes.len());
+
     next_state.set(GameState::BuildingGrid);
 
 }

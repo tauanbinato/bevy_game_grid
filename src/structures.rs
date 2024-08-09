@@ -1,5 +1,5 @@
 use bevy::app::{App, Plugin, Update};
-use bevy::prelude::{Assets, Circle, ColorMaterial, Commands, Component, default, Gizmos, in_state, Mesh, OnEnter, Query, ResMut, Transform, Vec2};
+use bevy::prelude::{Assets, Circle, ColorMaterial, Commands, Component, default, Gizmos, in_state, IntoSystemConfigs, Mesh, OnEnter, Query, ResMut, Transform, Vec2, With};
 use crate::state::GameState;
 use avian2d::prelude::RigidBody;
 use bevy::color::Color;
@@ -7,6 +7,7 @@ use bevy::color::palettes::css::*;
 use bevy::math::Vec3;
 use bevy::sprite::MaterialMesh2dBundle;
 use crate::grid::Grid;
+use crate::player::Player;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ModuleType {
@@ -121,7 +122,7 @@ pub struct StructuresPlugin;
 impl Plugin for StructuresPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(OnEnter(GameState::InGame), spawn_ship)
-            .add_systems(Update, debug_draw_structure_grid);
+            .add_systems(Update, (debug_draw_structure_grid, debug_draw_player_in_structure,).chain().run_if(in_state(GameState::InGame)));
     }
 }
 
@@ -172,6 +173,41 @@ fn debug_draw_structure_grid(
                 Vec2::splat(grid.cell_size * 0.95),
                 color,
             );
+        }
+    }
+}
+
+
+// New system to debug draw player position within the structure's grid
+fn debug_draw_player_in_structure(
+    mut gizmos: Gizmos,
+    structure_query: Query<&Structure>,
+    player_query: Query<&Transform, With<Player>>,
+) {
+    let player_color = GREEN;
+
+
+    for structure in &structure_query {
+        let grid = &structure.grid;
+        let universe_pos = structure.universe_pos.translation;
+
+        // Draw player position within the structure's grid
+        for player_transform in &player_query {
+            let player_world_pos = player_transform.translation - universe_pos;
+            let player_grid_pos = grid.world_to_grid(player_world_pos);
+            let square_size = grid.cell_size * 0.90; // Adjust this value to control the size of the square
+
+            // Check if the player is within the grid boundaries
+            if player_grid_pos.0 >= 0 && player_grid_pos.0 < grid.width as i32 &&
+                player_grid_pos.1 >= 0 && player_grid_pos.1 < grid.height as i32 {
+                let player_world_pos = grid.grid_to_world(player_grid_pos) + universe_pos;
+                gizmos.rect_2d(
+                    Vec2::new(player_world_pos.x, player_world_pos.y),
+                    0.0,
+                    Vec2::splat(square_size),
+                    player_color,
+                );
+            }
         }
     }
 }

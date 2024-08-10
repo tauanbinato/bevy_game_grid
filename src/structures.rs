@@ -165,24 +165,26 @@ fn detect_player_in_command_center(
                 if let Some(command_center_module) = structure.modules.iter_mut().find(|module| {
 
                     matches!(module.module_type, ModuleType::CommandCenter) &&
-                        module.inner_grid_pos == player_grid_pos &&
-                        module.entity_controlling.is_none() // Also checks if no entity is currently controlling it
+                        matches!(module.module_type, ModuleType::CommandCenter) && // Checking if the module is a Command Center
+                        module.inner_grid_pos == player_grid_pos // Checking if the player is in the Command Center
                 }) {
-                    // Player can control the Command Center if wanted.
+                    // Player can control or release the Command Center by pressing the spacebar.
                     for event in event_reader.read() {
-
                         if let InputAction::SpacePressed = event {
-                            // Set the entity controlling the Command Center
-                            command_center_module.entity_controlling = Some(player_entity);
-                            debug!("Player is now controlling the Command Center.");
+                            if command_center_module.entity_controlling.is_none() {
+                                // Take control if no one is controlling it
+                                command_center_module.entity_controlling = Some(player_entity);
+                                debug!("Player is now controlling the Command Center.");
+                            } else if command_center_module.entity_controlling == Some(player_entity) {
+                                // Release control if the player is already controlling it
+                                command_center_module.entity_controlling = None;
+                                debug!("Player has released control of the Command Center.");
+                            }
                         }
-
                     }
                 } else {
-                    // debug!("Player is not in a Command Center or the Command Center is already being controlled.");
+                    // debug!("Player is not in a Command Center or the is not the module.");
                 }
-
-
             }
         }
     }

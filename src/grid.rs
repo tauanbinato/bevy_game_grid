@@ -12,12 +12,15 @@ use bevy::{
     sprite::{MaterialMesh2dBundle, Mesh2dHandle}
 };
 use bevy::asset::ron;
-use crate::assetLoader::{AssetStore, LevelAssetBlob, Level};
+use crate::asset_loader::{AssetStore, AssetBlob, Level};
 use crate::player::{Player, PlayerGridPosition};
 use crate::schedule::{InGameSet};
 use crate::state::GameState;
 
-pub struct GridPlugin;
+#[derive(Default)]
+pub struct GridPlugin {
+    pub debug_enable: bool,
+}
 
 impl Plugin for GridPlugin {
     fn build(&self, app: &mut App) {
@@ -25,9 +28,12 @@ impl Plugin for GridPlugin {
             .init_gizmo_group::<MyGridGizmos>()
             .add_event::<PlayerGridChangeEvent>()
             .add_systems(OnEnter(GameState::BuildingGrid), setup_grid_from_file)
+            .add_systems(FixedUpdate, apply_gravity.run_if(in_state(GameState::InGame)))
+            .add_systems(Update, detect_grid_updates.run_if(in_state(GameState::InGame)));
 
-            .add_systems(Update, (detect_grid_updates, debug_draw_grid, debug_draw_rects).chain().run_if(in_state(GameState::InGame)))
-            .add_systems(FixedUpdate, apply_gravity.run_if(in_state(GameState::InGame)));
+        if self.debug_enable {
+            app.add_systems(Update, (detect_grid_updates, debug_draw_grid, debug_draw_rects).chain().run_if(in_state(GameState::InGame)));
+        }
 
     }
 }
@@ -53,7 +59,7 @@ impl From<char> for EnvironmentType {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct GridProperties {
     pub environment: EnvironmentType
 }
@@ -65,7 +71,7 @@ impl Default for GridProperties {
     }
 }
 
-#[derive(Resource)]
+#[derive(Resource, Default, Debug)]
 pub struct Grid {
     pub width: u32,
     pub height: u32,
@@ -75,14 +81,14 @@ pub struct Grid {
 
 #[derive(Debug, Resource)]
 pub struct GridCell {
-    pub entity: Option<Entity>,
+    pub data: Option<Entity>,
     pub color: Srgba,
     pub properties: GridProperties,
 }
 impl Default for GridCell {
     fn default() -> Self {
         Self {
-            entity: None,
+            data: None,
             color: Srgba::rgb(0.5, 0.5, 0.5),
             properties: GridProperties::default(),
         }
@@ -105,37 +111,34 @@ impl Grid {
         }
     }
 
-    pub fn insert_new(&mut self, x: i32, y: i32, entity: Entity) {
-        self.cells.insert((x, y), GridCell { entity: Some(entity), color: Srgba::rgb(0.5, 0.5, 0.5), properties: GridProperties::default() });
+    pub fn insert_new(&mut self, x: i32, y: i32, data: Entity) {
+        self.cells.insert((x, y), GridCell { data: Some(data), color: Srgba::rgb(0.5, 0.5, 0.5), properties: GridProperties::default() });
+    }
+
+    pub fn insert(&mut self, x: i32, y: i32){
+        self.cells.insert((x, y), GridCell { data: None, color: Srgba::rgb(0.5, 0.5, 0.5), properties: GridProperties::default() });
     }
 
     pub fn get(&self, x: i32, y: i32) -> Option<&GridCell> {
         self.cells.get(&(x, y))
     }
 
-    pub fn get_mut(&mut self, x: i32, y: i32) -> Option<&mut GridCell> {
-        self.cells.get_mut(&(x, y))
-    }
-
-    fn clear_cell(&mut self, x: i32, y: i32) {
-        self.cells.remove(&(x, y));
-    }
 
     fn remove_entity_from_cell(&mut self, x: i32, y: i32) {
         if let Some(cell) = self.cells.get_mut(&(x, y)) {
-            cell.entity = None;
+            cell.data = None;
         }
     }
 
-    fn insert_entity_in_cell(&mut self, x: i32, y: i32, entity: Entity) {
+    fn insert_entity_in_cell(&mut self, x: i32, y: i32, data: Entity) {
         if let Some(cell) = self.cells.get_mut(&(x, y)) {
-            cell.entity = Some(entity);
+            cell.data = Some(data);
         }
     }
 
-    pub fn update_entity_position(&mut self, entity: Entity, new_x: i32, new_y: i32, old_X: i32, old_y: i32) {
-        self.remove_entity_from_cell(old_X, old_y);
-        self.insert_entity_in_cell(new_x, new_y, entity);
+    pub fn update_data_position(&mut self, data: Entity, new_x: i32, new_y: i32, old_x: i32, old_y: i32) {
+        self.remove_entity_from_cell(old_x, old_y);
+        self.insert_entity_in_cell(new_x, new_y, data);
     }
 
     pub fn world_to_grid(&self, world_pos: Vec3) -> (i32, i32) {
@@ -158,12 +161,6 @@ impl Grid {
             0.0,
         )
     }
-
-    pub fn color_cell(&mut self, x: i32, y: i32, color: Srgba) {
-        if let Some(cell) = self.cells.get_mut(&(x, y)) {
-            cell.color = color;
-        }
-    }
 }
 
 #[derive(Default, Reflect, GizmoConfigGroup)]
@@ -172,15 +169,14 @@ struct MyGridGizmos {}
 fn setup_grid_from_file(
     mut commands: Commands,
     asset_store: Res<AssetStore>,
-    blob_assets: Res<Assets<LevelAssetBlob>>,
+    blob_assets: Res<Assets<AssetBlob>>,
     mut next_state: ResMut<NextState<GameState>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
-    debug!("Setting up grid");
     commands.spawn(Camera2dBundle::default());
 
-    if let Some(blob) = blob_assets.get(&asset_store.blob) {
+    if let Some(blob) = blob_assets.get(&asset_store.level_blob) {
         let level_data: String = String::from_utf8(blob.bytes.clone()).expect("Invalid UTF-8 data");
         let level: Level = serde_json::from_str(&level_data).expect("Failed to deserialize level data");
 
@@ -215,7 +211,7 @@ fn setup_grid_from_file(
                 cells.insert(
                     (x as i32, y as i32),
                     GridCell {
-                        entity: None,
+                        data: None,
                         color: Srgba::rgb(0.5, 0.5, 0.5),
                         properties: GridProperties {
                             environment,
@@ -224,14 +220,14 @@ fn setup_grid_from_file(
                 );
             }
         }
-        let grid = Grid {
+        let grid: Grid = Grid {
             width: level.width,
             height: level.height,
             cell_size: level.cell_size,
             cells,
         };
         commands.insert_resource(grid);
-        next_state.set(GameState::InGame);
+        next_state.set(GameState::BuildingStructures);
     } else {
         panic!("Failed to load level asset");
     }
@@ -295,7 +291,7 @@ fn detect_grid_updates(
         let (old_grid_x, old_grid_y) = player_grid_position.grid_position;
 
         if (old_grid_x, old_grid_y) != (updated_grid_x, updated_grid_y) {
-            debug!("Player moved from ({}, {}) to ({}, {})", old_grid_x, old_grid_y, updated_grid_x, updated_grid_y);
+            // debug!("Player moved from ({}, {}) to ({}, {})", old_grid_x, old_grid_y, updated_grid_x, updated_grid_y);
             event_writer.send(PlayerGridChangeEvent {
                 entity,
                 old_cell: (old_grid_x, old_grid_y),
@@ -306,14 +302,13 @@ fn detect_grid_updates(
             player_grid_position.grid_position = (updated_grid_x, updated_grid_y);
 
             // Update the grid with the new player position
-            grid.update_entity_position(entity, updated_grid_x, updated_grid_y, old_grid_x, old_grid_y);
+            grid.update_data_position(entity, updated_grid_x, updated_grid_y, old_grid_x, old_grid_y);
         }
     }
 }
 fn apply_gravity(
     mut query: Query<(&Transform, &mut LinearVelocity)>,
     grid: Res<Grid>,
-    time: Res<Time>,
 ) {
     let damping_factor: f32 = 0.95; // Adjust this value to control the damping effect
 

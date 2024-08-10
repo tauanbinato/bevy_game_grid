@@ -1,10 +1,8 @@
-use avian2d::{math::*, prelude::*};
+use avian2d::{prelude::*};
 use bevy::prelude::*;
 use crate::grid::Grid;
 use bevy::prelude::*;
 use bevy::sprite::{MaterialMesh2dBundle};
-use crate::schedule::InGameSet;
-use crate::state::GameState;
 
 pub struct OrePlugin;
 
@@ -17,7 +15,7 @@ impl Plugin for OrePlugin {
 #[derive(Component)]
 pub struct Ore;
 
-fn spawn_ore(
+fn _spawn_ore(
     mut commands: Commands,
     mut materials: ResMut<Assets<ColorMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,

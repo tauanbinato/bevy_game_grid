@@ -1,6 +1,5 @@
 use bevy::app::{App, Plugin, Startup};
 use bevy::prelude::Commands;
-use iyes_perf_ui::entries::PerfUiFramerateEntries;
 use iyes_perf_ui::prelude::*;
 
 #[derive(Default)]

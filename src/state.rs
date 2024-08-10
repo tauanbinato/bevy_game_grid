@@ -5,9 +5,9 @@ pub enum GameState {
     #[default]
     LoadingAssets,
     BuildingGrid,
+    BuildingStructures,
     InGame,
     Paused,
-    GameOver,
 }
 
 pub struct StatePlugin;

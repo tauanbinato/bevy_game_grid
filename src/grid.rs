@@ -16,17 +16,10 @@ use crate::asset_loader::{AssetStore, AssetBlob, Level};
 use crate::player::{Player, PlayerGridPosition};
 use crate::schedule::{InGameSet};
 use crate::state::GameState;
-use crate::structures::{ModuleType};
 
 #[derive(Default)]
 pub struct GridPlugin {
     pub debug_enable: bool,
-}
-
-// A Resource that holds a vector of structures grid
-#[derive(Resource, Default)]
-pub struct StructuresGrid {
-    pub grids: Vec<Grid<ModuleType>>,
 }
 
 impl Plugin for GridPlugin {
@@ -78,21 +71,21 @@ impl Default for GridProperties {
     }
 }
 
-#[derive(Resource, Default)]
-pub struct Grid<T> {
+#[derive(Resource, Default, Debug)]
+pub struct Grid {
     pub width: u32,
     pub height: u32,
     pub cell_size: f32,
-    pub cells: HashMap<(i32, i32), GridCell<T>>,
+    pub cells: HashMap<(i32, i32), GridCell>,
 }
 
 #[derive(Debug, Resource)]
-pub struct GridCell<T> {
-    pub data: Option<T>,
+pub struct GridCell {
+    pub data: Option<Entity>,
     pub color: Srgba,
     pub properties: GridProperties,
 }
-impl<T> Default for GridCell<T> {
+impl Default for GridCell {
     fn default() -> Self {
         Self {
             data: None,
@@ -102,8 +95,7 @@ impl<T> Default for GridCell<T> {
     }
 }
 
-impl<T> Grid<T> {
-    #[deprecated]
+impl Grid {
     pub fn new(width: u32, height: u32, cell_size: f32) -> Self {
         let mut cells = HashMap::new();
         for x in 0..width {
@@ -119,11 +111,15 @@ impl<T> Grid<T> {
         }
     }
 
-    pub fn insert_new(&mut self, x: i32, y: i32, data: T) {
+    pub fn insert_new(&mut self, x: i32, y: i32, data: Entity) {
         self.cells.insert((x, y), GridCell { data: Some(data), color: Srgba::rgb(0.5, 0.5, 0.5), properties: GridProperties::default() });
     }
 
-    pub fn get(&self, x: i32, y: i32) -> Option<&GridCell<T>> {
+    pub fn insert(&mut self, x: i32, y: i32){
+        self.cells.insert((x, y), GridCell { data: None, color: Srgba::rgb(0.5, 0.5, 0.5), properties: GridProperties::default() });
+    }
+
+    pub fn get(&self, x: i32, y: i32) -> Option<&GridCell> {
         self.cells.get(&(x, y))
     }
 
@@ -134,13 +130,13 @@ impl<T> Grid<T> {
         }
     }
 
-    fn insert_entity_in_cell(&mut self, x: i32, y: i32, data: T) {
+    fn insert_entity_in_cell(&mut self, x: i32, y: i32, data: Entity) {
         if let Some(cell) = self.cells.get_mut(&(x, y)) {
             cell.data = Some(data);
         }
     }
 
-    pub fn update_data_position(&mut self, data: T, new_x: i32, new_y: i32, old_x: i32, old_y: i32) {
+    pub fn update_data_position(&mut self, data: Entity, new_x: i32, new_y: i32, old_x: i32, old_y: i32) {
         self.remove_entity_from_cell(old_x, old_y);
         self.insert_entity_in_cell(new_x, new_y, data);
     }
@@ -224,7 +220,7 @@ fn setup_grid_from_file(
                 );
             }
         }
-        let grid: Grid<Entity> = Grid {
+        let grid: Grid = Grid {
             width: level.width,
             height: level.height,
             cell_size: level.cell_size,
@@ -239,7 +235,7 @@ fn setup_grid_from_file(
 
 fn debug_draw_grid(
     mut gizmos: Gizmos,
-    grid: Res<Grid<Entity>>
+    grid: Res<Grid>
 ) {
     // Another way to draw the grid
     gizmos.grid_2d(
@@ -254,7 +250,7 @@ fn debug_draw_grid(
 
 fn debug_draw_rects(
     mut gizmos: Gizmos,
-    grid: Res<Grid<Entity>>,
+    grid: Res<Grid>,
     query: Query<&Transform, With<Player>>,
 ) {
 
@@ -284,7 +280,7 @@ pub struct PlayerGridChangeEvent {
 
 fn detect_grid_updates(
     query: Query<(Entity, &Transform), With<Player>>,
-    mut grid: ResMut<Grid<Entity>>,
+    mut grid: ResMut<Grid>,
     mut event_writer: EventWriter<PlayerGridChangeEvent>,
     mut player_grid_position: ResMut<PlayerGridPosition>,
 ) {
@@ -312,7 +308,7 @@ fn detect_grid_updates(
 }
 fn apply_gravity(
     mut query: Query<(&Transform, &mut LinearVelocity)>,
-    grid: Res<Grid<Entity>>,
+    grid: Res<Grid>,
 ) {
     let damping_factor: f32 = 0.95; // Adjust this value to control the damping effect
 

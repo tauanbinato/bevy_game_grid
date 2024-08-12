@@ -36,20 +36,22 @@ struct ControlledByPlayer {
     player_entity: Entity,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct Module {
     inner_grid_pos: (i32, i32),
     module_type: ModuleType,
     entity_controlling: Option<Entity>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 enum ModuleType {
+    #[default]
+    Walkable,
     Engine,
     CommandCenter,
     LivingQuarters,
     Storage,
-    Walkable
+    Wall,
 }
 
 #[derive(Bundle)]
@@ -87,6 +89,8 @@ fn setup_structures_from_file(
     asset_store: Res<AssetStore>,
     blob_assets: Res<Assets<AssetBlob>>,
     mut next_state: ResMut<NextState<GameState>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    mut meshes: ResMut<Assets<Mesh>>,
 ) {
     if let Some(blob) = blob_assets.get(&asset_store.structures_blob) {
         let structures_data: String = String::from_utf8(blob.bytes.clone()).expect("Invalid UTF-8 data");
@@ -113,6 +117,7 @@ fn setup_structures_from_file(
                                 inner_grid_pos: (x as i32, y as i32),
                                 module_type: ModuleType::Engine,
                                 entity_controlling: None,
+                                ..default()
                             };
                             structure_component.add_module(engine_module);
                         },
@@ -120,7 +125,7 @@ fn setup_structures_from_file(
                             let command_center_module = Module {
                                 inner_grid_pos: (x as i32, y as i32),
                                 module_type: ModuleType::CommandCenter,
-                                entity_controlling: None,
+                                ..default()
                             };
                             structure_component.add_module(command_center_module);
                         },
@@ -128,7 +133,7 @@ fn setup_structures_from_file(
                             let walkable_module = Module {
                                 inner_grid_pos: (x as i32, y as i32),
                                 module_type: ModuleType::Walkable,
-                                entity_controlling: None,
+                                ..default()
                             };
                             structure_component.add_module(walkable_module);
                         },
@@ -248,27 +253,6 @@ fn move_structure_system(
             *structure_velocity = *player_velocity;
         }
     }
-
-
-    // if let Ok((player_entity_from_query, mut player_vel)) = player_query.get_mut(*player_entity_taking_control) {
-    //     if let Ok((_, mut structure_velocity)) = structure_query.get_mut(*structure_entity) {
-    //         if (player_entity_from_query == *player_entity_taking_control) {
-    //             debug!("Event received: Player has taken control of the Command Center.");
-    //
-    //             for event in input_reader.read() {
-    //                 match event {
-    //                     InputAction::Move(direction) => {
-    //                         // Set the structure's velocity to match the player's velocity
-    //                         *structure_velocity = *player_vel;
-    //                         debug!("Structure velocity matched with player velocity.");
-    //                     }
-    //                     _ => {}
-    //                 }
-    //             }
-    //         }
-    //     }
-    // }
-
 }
 
 fn debug_draw_structure_grid(
@@ -288,6 +272,7 @@ fn debug_draw_structure_grid(
                 ModuleType::LivingQuarters => YELLOW,
                 ModuleType::Storage => PURPLE,
                 ModuleType::Walkable => GREY,
+                ModuleType::Wall => BLACK,
             };
 
             gizmos.rect_2d(

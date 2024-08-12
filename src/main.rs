@@ -3,7 +3,7 @@ use avian2d::{math::*, prelude::*};
 use bevy::app::PluginGroupBuilder;
 use bevy::log::LogPlugin;
 use bevy::window::PresentMode;
-
+use bevy_inspector_egui::quick::WorldInspectorPlugin;
 mod grid;
 mod player;
 mod ore;
@@ -12,7 +12,6 @@ mod state;
 mod debug;
 mod asset_loader;
 mod structures;
-
 use grid::GridPlugin;
 use player::PlayerPlugin;
 use ore::OrePlugin;
@@ -54,6 +53,6 @@ fn main() {
         .insert_resource(Gravity(Vector::ZERO))
 
         .add_plugins((LoadersPlugins, GridPlugin { debug_enable: true }, PlayerPlugin, StructuresPlugin { debug_enable: true }, OrePlugin, DebugPlugin { enable: true }))
-
+        //.add_plugins(WorldInspectorPlugin::new())
         .run();
 }

@@ -1,3 +1,5 @@
+use std::process::Command;
+use avian2d::{prelude::*};
 use bevy::app::{App, Plugin, Update};
 use bevy::prelude::*;
 use crate::state::GameState;
@@ -18,8 +20,10 @@ pub struct StructuresPlugin {
 
 impl Plugin for StructuresPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(GameState::BuildingStructures), setup_structures_from_file)
-        .add_systems(Update, detect_player_in_command_center.run_if(in_state(GameState::InGame)));
+        app.add_event::<ModuleInteractionEvent>()
+            .add_systems(OnEnter(GameState::BuildingStructures), setup_structures_from_file)
+            .add_systems(Update, (control_command_center_system, move_structure_system).run_if(in_state(GameState::InGame)))
+            .add_systems(FixedUpdate, move_structure_system.run_if(in_state(GameState::InGame)));
 
         if self.debug_enable {
             app.add_systems(Update, (debug_draw_structure_grid,debug_draw_player_rect_grid_in_structure).chain().run_if(in_state(GameState::InGame)));
@@ -27,24 +31,32 @@ impl Plugin for StructuresPlugin {
     }
 }
 
-#[derive(Debug)]
+#[derive(Component)]
+struct ControlledByPlayer {
+    player_entity: Entity,
+}
+
+#[derive(Debug, Default)]
 struct Module {
     inner_grid_pos: (i32, i32),
     module_type: ModuleType,
     entity_controlling: Option<Entity>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 enum ModuleType {
+    #[default]
+    Walkable,
     Engine,
     CommandCenter,
     LivingQuarters,
     Storage,
-    Walkable
+    Wall,
 }
 
 #[derive(Bundle)]
 struct StructureBundle {
+    rigid_body: RigidBody,
     structure: Structure,
     transform: Transform,
 }
@@ -77,6 +89,8 @@ fn setup_structures_from_file(
     asset_store: Res<AssetStore>,
     blob_assets: Res<Assets<AssetBlob>>,
     mut next_state: ResMut<NextState<GameState>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    mut meshes: ResMut<Assets<Mesh>>,
 ) {
     if let Some(blob) = blob_assets.get(&asset_store.structures_blob) {
         let structures_data: String = String::from_utf8(blob.bytes.clone()).expect("Invalid UTF-8 data");
@@ -103,6 +117,7 @@ fn setup_structures_from_file(
                                 inner_grid_pos: (x as i32, y as i32),
                                 module_type: ModuleType::Engine,
                                 entity_controlling: None,
+                                ..default()
                             };
                             structure_component.add_module(engine_module);
                         },
@@ -110,7 +125,7 @@ fn setup_structures_from_file(
                             let command_center_module = Module {
                                 inner_grid_pos: (x as i32, y as i32),
                                 module_type: ModuleType::CommandCenter,
-                                entity_controlling: None,
+                                ..default()
                             };
                             structure_component.add_module(command_center_module);
                         },
@@ -118,7 +133,7 @@ fn setup_structures_from_file(
                             let walkable_module = Module {
                                 inner_grid_pos: (x as i32, y as i32),
                                 module_type: ModuleType::Walkable,
-                                entity_controlling: None,
+                                ..default()
                             };
                             structure_component.add_module(walkable_module);
                         },
@@ -135,6 +150,7 @@ fn setup_structures_from_file(
             }
 
             commands.spawn(StructureBundle {
+                rigid_body: RigidBody::Dynamic,
                 structure: structure_component,
                 transform: Transform::from_translation(Vec3::new(-500.0, 100.0, 1.0)),
             });
@@ -145,15 +161,29 @@ fn setup_structures_from_file(
     }
 }
 
-fn detect_player_in_command_center(
+#[derive(Event)]
+pub enum ModuleInteractionEvent {
+    TakeControl {
+        player_entity: Entity,
+        structure_entity: Entity,
+    },
+    ReleaseControl {
+        player_entity: Entity,
+        structure_entity: Entity,
+    },
+}
+
+fn control_command_center_system(
     mut event_reader: EventReader<InputAction>,
-    mut structure_query: Query<(&mut Structure, &Transform)>,
+    mut event_writer: EventWriter<ModuleInteractionEvent>,
+    mut structure_query: Query<(Entity, &mut Structure, &Transform)>,
     player_query: Query<(Entity, &Transform), With<Player>>,
+    mut command: Commands
 ) {
 
     //loop for player pos
     for (player_entity, player_transform) in &player_query {
-        for (mut structure, structure_transform) in &mut structure_query {
+        for (structure_entity, mut structure, structure_transform) in &mut structure_query {
             let player_world_pos = player_transform.translation - structure_transform.translation;
             let player_grid_pos = structure.grid.world_to_grid(player_world_pos);
 
@@ -175,10 +205,30 @@ fn detect_player_in_command_center(
                                 // Take control if no one is controlling it
                                 command_center_module.entity_controlling = Some(player_entity);
                                 debug!("Player is now controlling the Command Center.");
+
+
+                                // lets insert the PlayerControlled component to the structure
+                                command.entity(structure_entity).insert(ControlledByPlayer {
+                                    player_entity,
+                                });
+
+                                event_writer.send(ModuleInteractionEvent::TakeControl {
+                                    player_entity,
+                                    structure_entity,
+                                });
                             } else if command_center_module.entity_controlling == Some(player_entity) {
                                 // Release control if the player is already controlling it
                                 command_center_module.entity_controlling = None;
                                 debug!("Player has released control of the Command Center.");
+
+                                // lets remove the PlayerControlled component from the structure
+                                command.entity(structure_entity).remove::<ControlledByPlayer>();
+
+                                // Emit an event for releasing control
+                                event_writer.send(ModuleInteractionEvent::ReleaseControl {
+                                    player_entity,
+                                    structure_entity,
+                                });
                             }
                         }
                     }
@@ -191,36 +241,19 @@ fn detect_player_in_command_center(
 
 }
 
-// fn move_structure_system(
-//     mut structure_query: Query<&mut Structure>,
-//     mut input_reader: EventReader<InputAction>,
-//     player_query: Query<Entity, With<Player>>,
-//     time: Res<Time>,
-// ) {
-//     let delta_time = time.delta_seconds();
-//
-//     for event in input_reader.read() {
-//         if let InputAction::Move(direction) = event {
-//             for mut structure in &mut structure_query {
-//                 for player_entity in &player_query {
-//                     if structure.grid.cells.values().any(|cell| {
-//                         if let Some(module) = &cell.data {
-//                             if let ModuleType::CommandCenter { controlling_entity } = module.module_type {
-//                                 controlling_entity == Some(player_entity)
-//                             } else {
-//                                 false
-//                             }
-//                         } else {
-//                             false
-//                         }
-//                     }) {
-//                         //structure.universe_pos.translation += direction * 50.0 * delta_time;
-//                     }
-//                 }
-//             }
-//         }
-//     }
-// }
+fn move_structure_system(
+    mut controlled_structures_query: Query<(Entity, &mut LinearVelocity, &ControlledByPlayer), With<Structure>>,
+    player_query: Query<(Entity, &LinearVelocity), (With<Player>, Without<Structure>)>,
+) {
+
+    // Loop through all structures that are controlled by the player
+    for (structure_entity, mut structure_velocity, controlled_by) in &mut controlled_structures_query {
+        if let Ok((player_entity, player_velocity)) = player_query.get(controlled_by.player_entity) {
+            // Set the structure's velocity to match the player's velocity
+            *structure_velocity = *player_velocity;
+        }
+    }
+}
 
 fn debug_draw_structure_grid(
     mut gizmos: Gizmos,
@@ -239,6 +272,7 @@ fn debug_draw_structure_grid(
                 ModuleType::LivingQuarters => YELLOW,
                 ModuleType::Storage => PURPLE,
                 ModuleType::Walkable => GREY,
+                ModuleType::Wall => BLACK,
             };
 
             gizmos.rect_2d(

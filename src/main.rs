@@ -12,6 +12,8 @@ mod state;
 mod debug;
 mod asset_loader;
 mod structures;
+mod modules;
+
 use grid::GridPlugin;
 use player::PlayerPlugin;
 use ore::OrePlugin;

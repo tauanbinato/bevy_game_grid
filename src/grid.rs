@@ -1,21 +1,11 @@
-use bevy::prelude::*;
-use std::collections::HashMap;
-use std::process::Command;
+use crate::asset_loader::{AssetBlob, AssetStore, Level};
+use crate::player::{Player, PlayerGridPosition};
+use crate::state::GameState;
 use avian2d::collision::Collider;
 use avian2d::prelude::{LinearVelocity, RigidBody};
-use bevy::{
-    core::FrameCount,
-    diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
-    prelude::*,
-    window::{CursorGrabMode, PresentMode, WindowLevel, WindowTheme},
-    color::palettes::css::*,
-    sprite::{MaterialMesh2dBundle, Mesh2dHandle}
-};
-use bevy::asset::ron;
-use crate::asset_loader::{AssetStore, AssetBlob, Level};
-use crate::player::{Player, PlayerGridPosition};
-use crate::schedule::{InGameSet};
-use crate::state::GameState;
+use bevy::prelude::*;
+use bevy::{color::palettes::css::*, sprite::MaterialMesh2dBundle};
+use std::collections::HashMap;
 
 #[derive(Default)]
 pub struct GridPlugin {
@@ -24,20 +14,28 @@ pub struct GridPlugin {
 
 impl Plugin for GridPlugin {
     fn build(&self, app: &mut App) {
-        app
-            .init_gizmo_group::<MyGridGizmos>()
+        app.init_gizmo_group::<MyGridGizmos>()
             .add_event::<PlayerGridChangeEvent>()
             .add_systems(OnEnter(GameState::BuildingGrid), setup_grid_from_file)
-            .add_systems(FixedUpdate, apply_gravity.run_if(in_state(GameState::InGame)))
-            .add_systems(Update, detect_grid_updates.run_if(in_state(GameState::InGame)));
+            .add_systems(
+                FixedUpdate,
+                apply_gravity.run_if(in_state(GameState::InGame)),
+            )
+            .add_systems(
+                Update,
+                detect_grid_updates.run_if(in_state(GameState::InGame)),
+            );
 
         if self.debug_enable {
-            app.add_systems(Update, (detect_grid_updates, debug_draw_grid, debug_draw_rects).chain().run_if(in_state(GameState::InGame)));
+            app.add_systems(
+                Update,
+                (detect_grid_updates, debug_draw_grid, debug_draw_rects)
+                    .chain()
+                    .run_if(in_state(GameState::InGame)),
+            );
         }
-
     }
 }
-
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum EnvironmentType {
@@ -61,13 +59,11 @@ impl From<char> for EnvironmentType {
 
 #[derive(Debug)]
 pub struct GridProperties {
-    pub environment: EnvironmentType
+    pub environment: EnvironmentType,
 }
 impl Default for GridProperties {
     fn default() -> Self {
-        Self {
-            environment: EnvironmentType::InsideShip { gravity: 1.0 },
-        }
+        Self { environment: EnvironmentType::InsideShip { gravity: 1.0 } }
     }
 }
 
@@ -97,32 +93,40 @@ impl Default for GridCell {
 
 impl Grid {
     pub fn new(width: u32, height: u32, cell_size: f32) -> Self {
-        let mut cells = HashMap::new();
+        let mut cells: HashMap<(i32, i32), GridCell> = HashMap::new();
         for x in 0..width {
             for y in 0..height {
                 cells.insert((x as i32, y as i32), GridCell::default());
             }
         }
-        Self {
-            width,
-            height,
-            cell_size,
-            cells,
-        }
+        Self { width, height, cell_size, cells }
     }
 
     pub fn insert_new(&mut self, x: i32, y: i32, data: Entity) {
-        self.cells.insert((x, y), GridCell { data: Some(data), color: Srgba::rgb(0.5, 0.5, 0.5), properties: GridProperties::default() });
+        self.cells.insert(
+            (x, y),
+            GridCell {
+                data: Some(data),
+                color: Srgba::rgb(0.5, 0.5, 0.5),
+                properties: GridProperties::default(),
+            },
+        );
     }
 
-    pub fn insert(&mut self, x: i32, y: i32){
-        self.cells.insert((x, y), GridCell { data: None, color: Srgba::rgb(0.5, 0.5, 0.5), properties: GridProperties::default() });
+    pub fn insert(&mut self, x: i32, y: i32) {
+        self.cells.insert(
+            (x, y),
+            GridCell {
+                data: None,
+                color: Srgba::rgb(0.5, 0.5, 0.5),
+                properties: GridProperties::default(),
+            },
+        );
     }
 
     pub fn get(&self, x: i32, y: i32) -> Option<&GridCell> {
         self.cells.get(&(x, y))
     }
-
 
     fn remove_entity_from_cell(&mut self, x: i32, y: i32) {
         if let Some(cell) = self.cells.get_mut(&(x, y)) {
@@ -136,7 +140,14 @@ impl Grid {
         }
     }
 
-    pub fn update_data_position(&mut self, data: Entity, new_x: i32, new_y: i32, old_x: i32, old_y: i32) {
+    pub fn update_data_position(
+        &mut self,
+        data: Entity,
+        new_x: i32,
+        new_y: i32,
+        old_x: i32,
+        old_y: i32,
+    ) {
         self.remove_entity_from_cell(old_x, old_y);
         self.insert_entity_in_cell(new_x, new_y, data);
     }
@@ -156,8 +167,11 @@ impl Grid {
         let half_height = self.height as f32 * self.cell_size / 2.0;
 
         Vec3::new(
-            grid_pos.0 as f32 * self.cell_size - half_width + self.cell_size / 2.0,
-            half_height - grid_pos.1 as f32 * self.cell_size - self.cell_size / 2.0,
+            grid_pos.0 as f32 * self.cell_size - half_width
+                + self.cell_size / 2.0,
+            half_height
+                - grid_pos.1 as f32 * self.cell_size
+                - self.cell_size / 2.0,
             0.0,
         )
     }
@@ -177,18 +191,27 @@ fn setup_grid_from_file(
     commands.spawn(Camera2dBundle::default());
 
     if let Some(blob) = blob_assets.get(&asset_store.level_blob) {
-        let level_data: String = String::from_utf8(blob.bytes.clone()).expect("Invalid UTF-8 data");
-        let level: Level = serde_json::from_str(&level_data).expect("Failed to deserialize level data");
+        let level_data: String =
+            String::from_utf8(blob.bytes.clone()).expect("Invalid UTF-8 data");
+        let level: Level = serde_json::from_str(&level_data)
+            .expect("Failed to deserialize level data");
 
         let mut cells = HashMap::new();
-        debug!("Loading level with width: {}, height: {}, cell_size: {}", level.width, level.height, level.cell_size);
+        debug!(
+            "Loading level with width: {}, height: {}, cell_size: {}",
+            level.width, level.height, level.cell_size
+        );
         for (y, row) in level.world.iter().enumerate() {
             for (x, cell) in row.chars().enumerate() {
                 let environment = EnvironmentType::from(cell);
 
                 let cell_world_pos = Vec3::new(
-                    (x as f32 * level.cell_size) - (level.width as f32 * level.cell_size) / 2.0 + level.cell_size / 2.0,
-                    (level.height as f32 * level.cell_size) / 2.0 - (y as f32 * level.cell_size) - level.cell_size / 2.0,
+                    (x as f32 * level.cell_size)
+                        - (level.width as f32 * level.cell_size) / 2.0
+                        + level.cell_size / 2.0,
+                    (level.height as f32 * level.cell_size) / 2.0
+                        - (y as f32 * level.cell_size)
+                        - level.cell_size / 2.0,
                     0.0,
                 );
 
@@ -197,10 +220,20 @@ fn setup_grid_from_file(
                         RigidBody::Static,
                         Collider::rectangle(level.cell_size, level.cell_size),
                         MaterialMesh2dBundle {
-                            mesh: meshes.add(Rectangle {half_size: Vec2::splat(level.cell_size / 2.0)}).into(),
+                            mesh: meshes
+                                .add(Rectangle {
+                                    half_size: Vec2::splat(
+                                        level.cell_size / 2.0,
+                                    ),
+                                })
+                                .into(),
                             material: materials.add(Color::from(GREY)),
                             transform: Transform {
-                                translation: Vec3::new(cell_world_pos.x, cell_world_pos.y, 0.0),
+                                translation: Vec3::new(
+                                    cell_world_pos.x,
+                                    cell_world_pos.y,
+                                    0.0,
+                                ),
                                 ..default()
                             },
                             ..default()
@@ -213,9 +246,7 @@ fn setup_grid_from_file(
                     GridCell {
                         data: None,
                         color: Srgba::rgb(0.5, 0.5, 0.5),
-                        properties: GridProperties {
-                            environment,
-                        },
+                        properties: GridProperties { environment },
                     },
                 );
             }
@@ -233,19 +264,17 @@ fn setup_grid_from_file(
     }
 }
 
-fn debug_draw_grid(
-    mut gizmos: Gizmos,
-    grid: Res<Grid>
-) {
+fn debug_draw_grid(mut gizmos: Gizmos, grid: Res<Grid>) {
     // Another way to draw the grid
-    gizmos.grid_2d(
-        Vec2::ZERO,
-        0.0,
-        UVec2::new(grid.width, grid.height),
-        Vec2::splat(grid.cell_size),
-        Srgba::rgb(0.5, 0.5, 0.5),
-    ).outer_edges();
-
+    gizmos
+        .grid_2d(
+            Vec2::ZERO,
+            0.0,
+            UVec2::new(grid.width, grid.height),
+            Vec2::splat(grid.cell_size),
+            Srgba::rgb(0.5, 0.5, 0.5),
+        )
+        .outer_edges();
 }
 
 fn debug_draw_rects(
@@ -253,7 +282,6 @@ fn debug_draw_rects(
     grid: Res<Grid>,
     query: Query<&Transform, With<Player>>,
 ) {
-
     let square_size = grid.cell_size * 0.95; // Adjust this value to control the size of the square
 
     for transform in &query {
@@ -267,7 +295,6 @@ fn debug_draw_rects(
             Vec2::splat(square_size),
             Srgba::RED,
         );
-
     }
 }
 
@@ -284,10 +311,9 @@ fn detect_grid_updates(
     mut event_writer: EventWriter<PlayerGridChangeEvent>,
     mut player_grid_position: ResMut<PlayerGridPosition>,
 ) {
-
     for (entity, transform) in &query {
-
-        let (updated_grid_x, updated_grid_y) = grid.world_to_grid(transform.translation);
+        let (updated_grid_x, updated_grid_y) =
+            grid.world_to_grid(transform.translation);
         let (old_grid_x, old_grid_y) = player_grid_position.grid_position;
 
         if (old_grid_x, old_grid_y) != (updated_grid_x, updated_grid_y) {
@@ -299,10 +325,17 @@ fn detect_grid_updates(
             });
 
             // Update the player's grid position state
-            player_grid_position.grid_position = (updated_grid_x, updated_grid_y);
+            player_grid_position.grid_position =
+                (updated_grid_x, updated_grid_y);
 
             // Update the grid with the new player position
-            grid.update_data_position(entity, updated_grid_x, updated_grid_y, old_grid_x, old_grid_y);
+            grid.update_data_position(
+                entity,
+                updated_grid_x,
+                updated_grid_y,
+                old_grid_x,
+                old_grid_y,
+            );
         }
     }
 }

@@ -1,6 +1,7 @@
 use avian2d::prelude::*;
 use bevy::app::{App, Plugin, Update};
 use bevy::color::palettes::css::*;
+use bevy::ecs::world;
 use bevy::math::Vec3;
 use bevy::prelude::*;
 
@@ -71,6 +72,18 @@ impl Structure {
             relative_pos.y - (self.grid.cell_size / 2.0),
             relative_pos.z,
         )
+    }
+
+    // Convert the player's world position to grid coordinates relative to the structure
+    pub fn world_to_grid(&self, world_pos: Vec3, structure_transform: &Transform) -> (i32, i32) {
+        // Convert the world position to the structure's local space
+        let relative_pos = self.get_relative_position(world_pos, structure_transform);
+
+        // Adjust for the grid's origin
+        let adjusted_pos = self.adjust_for_grid_origin(relative_pos);
+
+        // Convert the relative position to grid coordinates
+        self.grid.world_to_grid(adjusted_pos)
     }
 
     // Function to check if a raw world position is within the grid's bounds
@@ -153,7 +166,7 @@ fn setup_structures_from_file(
                                 &mut meshes,
                                 ModuleType::Engine,
                                 Color::from(RED),
-                                (y as i32, x as i32),
+                                (x as i32, y as i32),
                                 Vec3::new(x_translation, y_translation, 1.0),
                                 structure_component.grid.cell_size,
                                 mesh_scale_factor,
@@ -168,7 +181,7 @@ fn setup_structures_from_file(
                                 &mut meshes,
                                 ModuleType::Wall,
                                 Color::from(GREY),
-                                (y as i32, x as i32),
+                                (x as i32, y as i32),
                                 Vec3::new(x_translation, y_translation, 1.0),
                                 structure_component.grid.cell_size,
                                 mesh_scale_factor,
@@ -183,7 +196,7 @@ fn setup_structures_from_file(
                                 &mut meshes,
                                 ModuleType::CommandCenter,
                                 Color::from(BLUE),
-                                (y as i32, x as i32),
+                                (x as i32, y as i32),
                                 Vec3::new(x_translation, y_translation, -1.0),
                                 structure_component.grid.cell_size,
                                 mesh_scale_factor,
@@ -195,7 +208,7 @@ fn setup_structures_from_file(
                         _ => continue, // Skip characters that don't correspond to a module
                     };
 
-                    structure_component.grid.insert(y as i32, x as i32);
+                    structure_component.grid.insert(x as i32, y as i32);
                 }
             }
 
@@ -233,32 +246,23 @@ fn control_command_center_system(
     //loop for player pos
     for (player_entity, player_transform) in &player_query {
         for (structure_entity, structure, structure_transform, children) in &mut parent_query {
-            let player_relative_pos =
-                structure.get_relative_position(player_transform.translation, structure_transform);
-
-            // Adjust for the grid's origin
-            let adjusted_player_pos = structure.adjust_for_grid_origin(player_relative_pos);
-
             // Convert the adjusted position to grid coordinates
-            let (player_grid_x, player_grid_y) = structure.grid.world_to_grid(adjusted_player_pos);
+            let (player_grid_x, player_grid_y) =
+                structure.world_to_grid(player_transform.translation, structure_transform);
 
             // Check if the player's grid coordinates are within the grid's bounds
             if structure.is_within_grid_bounds(player_grid_x, player_grid_y) {
                 // Player is inside the structure's grid at this point.
-                //debug!("Player is inside the structure's grid.");
                 // Check if the player is in a Command Center and if so, check if the player is already controlling it
                 for child in children {
                     if let Ok(mut module) = child_query.get_mut(*child) {
-                        debug!("Player grid pos: {}", player_grid_x);
                         if matches!(module.module_type, ModuleType::CommandCenter)
-                            && module.inner_grid_pos == (player_grid_x, player_grid_y)
-                        // Checking if the player is in the Command Center
+                            && matches!((module.inner_grid_pos.0, module.inner_grid_pos.1), (x, y) if x == player_grid_x && y == player_grid_y)
                         {
                             debug!(
-                                "Player grid pos: ({}, {}), module: {:?}",
-                                player_grid_x, player_grid_y, module.module_type
+                                "Player is inside the Command Center module at grid position: ({}, {})",
+                                player_grid_x, player_grid_y
                             );
-
                             // Player can control or release the Command Center by pressing the spacebar.
                             for event in event_reader.read() {
                                 if let InputAction::SpacePressed = event {
@@ -297,64 +301,6 @@ fn control_command_center_system(
                 }
             }
         }
-
-        /* for (structure_entity, mut structure, structure_transform) in &mut structure_query {
-            let player_world_pos = player_transform.translation - structure_transform.translation;
-            let player_grid_pos = structure.grid.world_to_grid(player_world_pos);
-
-            // Check if the player is within the grid boundaries
-            if player_grid_pos.0 >= 0
-                && player_grid_pos.0 < structure.grid.width as i32
-                && player_grid_pos.1 >= 0
-                && player_grid_pos.1 < structure.grid.height as i32
-            {
-
-                // // Check if the player is in a Command Center and if so, check if the player is already controlling it
-                // if let Some(command_center_module) = structure.modules.iter_mut().find(|module| {
-                //
-                //     matches!(module.module_type, ModuleType::CommandCenter) &&
-                //         matches!(module.module_type, ModuleType::CommandCenter) && // Checking if the module is a Command Center
-                //         module.inner_grid_pos == player_grid_pos // Checking if the player is in the Command Center
-                // }) {
-                //     // Player can control or release the Command Center by pressing the spacebar.
-                //     for event in event_reader.read() {
-                //         if let InputAction::SpacePressed = event {
-                //             if command_center_module.entity_controlling.is_none() {
-                //                 // Take control if no one is controlling it
-                //                 command_center_module.entity_controlling = Some(player_entity);
-                //                 debug!("Player is now controlling the Command Center.");
-                //
-                //
-                //                 // lets insert the PlayerControlled component to the structure
-                //                 command.entity(structure_entity).insert(ControlledByPlayer {
-                //                     player_entity,
-                //                 });
-                //
-                //                 event_writer.send(ModuleInteractionEvent::TakeControl {
-                //                     player_entity,
-                //                     structure_entity,
-                //                 });
-                //             } else if command_center_module.entity_controlling == Some(player_entity) {
-                //                 // Release control if the player is already controlling it
-                //                 command_center_module.entity_controlling = None;
-                //                 debug!("Player has released control of the Command Center.");
-                //
-                //                 // lets remove the PlayerControlled component from the structure
-                //                 command.entity(structure_entity).remove::<ControlledByPlayer>();
-                //
-                //                 // Emit an event for releasing control
-                //                 event_writer.send(ModuleInteractionEvent::ReleaseControl {
-                //                     player_entity,
-                //                     structure_entity,
-                //                 });
-                //             }
-                //         }
-                //     }
-                // } else {
-                //     // debug!("Player is not in a Command Center or the is not the module.");
-                // }
-            }
-        } */
     }
 }
 
@@ -405,20 +351,12 @@ fn debug_draw_player_inside_structure_rect(
             let grid = &structure.grid;
             let square_size = grid.cell_size * 0.95; // Adjust this value to control the size of the square
 
-            // Get the player's position relative to the structure
-            let player_relative_pos =
-                structure.get_relative_position(player_transform.translation, structure_transform);
-
-            // Adjust for the grid's origin
-            let adjusted_player_pos = structure.adjust_for_grid_origin(player_relative_pos);
-
             // Convert the adjusted position to grid coordinates
-            let (grid_x, grid_y) = grid.world_to_grid(adjusted_player_pos);
+            let (grid_x, grid_y) = structure.world_to_grid(player_transform.translation, structure_transform);
 
             // Check if the player's grid coordinates are within the grid's bounds
             if structure.is_within_grid_bounds(grid_x, grid_y) {
                 // Player is inside the structure's grid
-                debug!("Player grid pos: ({}, {})", grid_x, grid_y);
                 // Get the world position for drawing
                 let world_pos = structure.grid_to_world_position((grid_x, grid_y), structure_transform);
 

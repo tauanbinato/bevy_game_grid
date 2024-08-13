@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use avian2d::prelude::*;
 use bevy::asset::Assets;
 use bevy::color::Color;
@@ -16,6 +18,7 @@ pub enum ModuleType {
 
 #[derive(Debug, Default, Component)]
 pub struct Module {
+    pub entity_connected: Option<Entity>,
     pub module_type: ModuleType,
     pub inner_grid_pos: (i32, i32),
 }
@@ -55,7 +58,7 @@ pub fn spawn_module(
             .spawn(ModuleBundleRigid {
                 rigidbody: RigidBody::Static,
                 collider: Collider::rectangle(cell_size * mesh_scale_factor, cell_size * mesh_scale_factor),
-                module: Module { module_type, inner_grid_pos: grid_pos },
+                module: Module { module_type, inner_grid_pos: grid_pos, ..default() },
                 mesh_bundle: MaterialMesh2dBundle {
                     material: materials.add(ColorMaterial::from(color)),
                     mesh: meshes
@@ -70,7 +73,7 @@ pub fn spawn_module(
         // Spawn the module entity
         module_entity = commands
             .spawn(ModuleBundleInteractable {
-                module: Module { module_type, inner_grid_pos: grid_pos },
+                module: Module { module_type, inner_grid_pos: grid_pos, ..default() },
                 mesh_bundle: MaterialMesh2dBundle {
                     material: materials.add(ColorMaterial::from(color)),
                     mesh: meshes

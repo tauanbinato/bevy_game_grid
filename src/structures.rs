@@ -1,16 +1,14 @@
-use crate::grid::Grid;
-use crate::player::{InputAction, Player};
-use crate::state::GameState;
 use avian2d::prelude::*;
 use bevy::app::{App, Plugin, Update};
 use bevy::color::palettes::css::*;
 use bevy::math::Vec3;
 use bevy::prelude::*;
-use bevy::sprite::MaterialMesh2dBundle;
-use std::process::Command;
 
 use crate::asset_loader::{AssetBlob, AssetStore, StructuresData};
-use crate::modules::{Module, ModuleBundle, ModuleType};
+use crate::grid::Grid;
+use crate::modules::{spawn_module, Module, ModuleType};
+use crate::player::{InputAction, Player};
+use crate::state::GameState;
 
 #[derive(Default)]
 pub struct StructuresPlugin {
@@ -25,7 +23,10 @@ impl Plugin for StructuresPlugin {
         //.add_systems(FixedUpdate, move_structure_system.run_if(in_state(GameState::InGame)));
 
         if self.debug_enable {
-            app.add_systems(Update, (debug_draw_structure_grid).chain().run_if(in_state(GameState::InGame)));
+            app.add_systems(
+                Update,
+                (debug_draw_structure_grid, debug_draw_rects).chain().run_if(in_state(GameState::InGame)),
+            );
         }
     }
 }
@@ -51,6 +52,50 @@ pub struct Structure {
 impl Structure {
     pub fn new() -> Self {
         Structure { grid: Default::default() }
+    }
+
+    // Convert the player's world position to a position relative to the structure's grid
+    pub fn player_relative_position(&self, player_world_pos: Vec3, structure_transform: &Transform) -> Vec3 {
+        player_world_pos - structure_transform.translation
+    }
+
+    // Adjust a position for the grid's origin by shifting by half a cell size
+    pub fn adjust_for_grid_origin(&self, relative_pos: Vec3) -> Vec3 {
+        Vec3::new(
+            relative_pos.x + (self.grid.cell_size / 2.0),
+            relative_pos.y + (self.grid.cell_size / 2.0),
+            relative_pos.z,
+        )
+    }
+
+    // Function to check if a raw world position is within the grid's bounds
+    pub fn is_world_position_within_grid(&self, world_pos: Vec3, structure_transform: &Transform) -> bool {
+        // Convert the player's world position to the structure's local grid coordinates
+        let relative_pos = world_pos - structure_transform.translation;
+
+        // Adjust for the grid's origin (if necessary)
+        let adjusted_pos = Vec3::new(
+            relative_pos.x + (self.grid.cell_size / 2.0),
+            relative_pos.y + (self.grid.cell_size / 2.0),
+            relative_pos.z,
+        );
+
+        // Convert the adjusted position to grid coordinates
+        let (grid_x, grid_y) = self.grid.world_to_grid(adjusted_pos);
+
+        // Check if these coordinates are within the grid's bounds
+        self.is_within_grid_bounds(grid_x, grid_y)
+    }
+
+    // Check if the grid coordinates are within the grid's bounds
+    pub fn is_within_grid_bounds(&self, grid_x: i32, grid_y: i32) -> bool {
+        grid_x >= 0 && grid_x < self.grid.width as i32 && grid_y >= 0 && grid_y < self.grid.height as i32
+    }
+
+    // Convert grid coordinates back to world coordinates and apply structure's translation
+    pub fn grid_to_world_position(&self, grid_pos: (i32, i32), structure_transform: &Transform) -> Vec3 {
+        let world_pos = self.grid.grid_to_world(grid_pos) + structure_transform.translation;
+        Vec3::new(world_pos.x - (self.grid.cell_size / 2.0), world_pos.y - (self.grid.cell_size / 2.0), world_pos.z)
     }
 }
 
@@ -91,68 +136,32 @@ fn setup_structures_from_file(
                     // Match the character to determine the type of module to spawn
                     match cell {
                         'E' => {
-                            let engine_module = commands
-                                .spawn(ModuleBundle {
-                                    rigidbody: RigidBody::Static,
-                                    collider: Collider::rectangle(
-                                        structure_component.grid.cell_size * mesh_scale_factor,
-                                        structure_component.grid.cell_size * mesh_scale_factor,
-                                    ),
-                                    module: Module {
-                                        module_type: ModuleType::Engine,
-                                        inner_grid_pos: (x as i32, y as i32),
-                                    },
-                                    mesh_bundle: MaterialMesh2dBundle {
-                                        material: materials.add(Color::from(RED)),
-                                        mesh: meshes
-                                            .add(Rectangle {
-                                                half_size: Vec2::splat(
-                                                    (structure_component.grid.cell_size / 2.0) * mesh_scale_factor,
-                                                ),
-                                            })
-                                            .into(),
-                                        transform: Transform {
-                                            translation: Vec3::new(x_translation, y_translation, 1.0),
-                                            ..default()
-                                        },
-                                        ..default()
-                                    },
-                                })
-                                .id();
-                            // Add the engine module as a child to the structure entity
-                            commands.entity(structure_entity).add_child(engine_module);
+                            spawn_module(
+                                &mut commands,
+                                structure_entity,
+                                &mut materials,
+                                &mut meshes,
+                                ModuleType::Engine,
+                                Color::from(RED),
+                                (x as i32, y as i32),
+                                Vec3::new(x_translation, y_translation, 1.0),
+                                structure_component.grid.cell_size,
+                                mesh_scale_factor,
+                            );
                         }
                         'W' => {
-                            let wall_module = commands
-                                .spawn(ModuleBundle {
-                                    rigidbody: RigidBody::Static,
-                                    collider: Collider::rectangle(
-                                        structure_component.grid.cell_size * mesh_scale_factor,
-                                        structure_component.grid.cell_size * mesh_scale_factor,
-                                    ),
-                                    module: Module {
-                                        module_type: ModuleType::Wall,
-                                        inner_grid_pos: (x as i32, y as i32),
-                                    },
-                                    mesh_bundle: MaterialMesh2dBundle {
-                                        material: materials.add(Color::from(BLUE)),
-                                        mesh: meshes
-                                            .add(Rectangle {
-                                                half_size: Vec2::splat(
-                                                    (structure_component.grid.cell_size / 2.0) * mesh_scale_factor,
-                                                ),
-                                            })
-                                            .into(),
-                                        transform: Transform {
-                                            translation: Vec3::new(x_translation, y_translation, 1.0),
-                                            ..default()
-                                        },
-                                        ..default()
-                                    },
-                                })
-                                .id();
-                            // Add the wall module as a child to the structure entity
-                            commands.entity(structure_entity).add_child(wall_module);
+                            spawn_module(
+                                &mut commands,
+                                structure_entity,
+                                &mut materials,
+                                &mut meshes,
+                                ModuleType::Wall,
+                                Color::from(BLUE),
+                                (x as i32, y as i32),
+                                Vec3::new(x_translation, y_translation, 1.0),
+                                structure_component.grid.cell_size,
+                                mesh_scale_factor,
+                            );
                         }
                         _ => continue, // Skip characters that don't correspond to a module
                     };
@@ -267,16 +276,38 @@ fn move_structure_system(
 
 fn debug_draw_structure_grid(
     mut gizmos: Gizmos,
+    structures_query: Query<(&Transform, &Structure)>,
     mut parent_query: Query<(Entity, &Children), With<Structure>>,
     mut child_query: Query<&mut Module>,
 ) {
-    for (parent, children) in &mut parent_query {
+    for (transform, structure) in &structures_query {
+        let world_pos = transform.translation;
+        let grid = &structure.grid;
+
+        // Draw the grid
+        gizmos
+            .grid_2d(
+                Vec2::new(world_pos.x - grid.cell_size / 2.0, world_pos.y + grid.cell_size / 2.0),
+                0.0,
+                UVec2::new(grid.width, grid.height),
+                Vec2::splat(grid.cell_size),
+                Color::from(GREY),
+            )
+            .outer_edges();
+    }
+
+    /* for (parent, childrens) in &mut parent_query {
         // To iterate through the entities children, just treat the Children component as a Vec
         // Alternatively, you could query entities that have a Parent component
-        for child in children {
-            if let Ok(engine) = child_query.get_mut(*child) {}
+        for child in childrens {
+            if let Ok(module) = child_query.get_mut(*child) {
+                let world_pos = Vec2::new(module.inner_grid_pos.0 as f32, module.inner_grid_pos.1 as f32);
+                let square_size = 50.0 * 0.90; // Adjust this value to control the size of the square
+
+                gizmos.rect_2d(world_pos, 0.0, Vec2::splat(square_size), GREY);
+            }
         }
-    }
+    } */
 
     /* for (transform, structure) in &structure_query {
         // loop on structure modules
@@ -295,32 +326,36 @@ fn debug_draw_structure_grid(
     } */
 }
 
-fn debug_draw_player_rect_grid_in_structure(
+fn debug_draw_rects(
     mut gizmos: Gizmos,
-    structure_query: Query<(&Transform, &Structure)>,
-    player_query: Query<&Transform, With<Player>>,
+    query: Query<&Transform, With<Player>>,
+    structures_query: Query<(&Transform, &Structure)>,
 ) {
-    // let player_color = GREEN;
-    //
-    // for (structure_transform, structure) in &structure_query {
-    //
-    //     for player_transform in &player_query {
-    //         let player_world_pos = player_transform.translation - structure_transform.translation;
-    //         let player_grid_pos = structure.grid.world_to_grid(player_world_pos);
-    //         let square_size = structure.grid.cell_size * 0.90; // Adjust this value to control the size of the square
-    //
-    //         // Check if the player is within the grid boundaries
-    //         if player_grid_pos.0 >= 0 && player_grid_pos.0 < structure.grid.width as i32 &&
-    //             player_grid_pos.1 >= 0 && player_grid_pos.1 < structure.grid.height as i32 {
-    //             let player_world_pos = structure.grid.grid_to_world(player_grid_pos) + structure_transform.translation;
-    //             gizmos.rect_2d(
-    //                 Vec2::new(player_world_pos.x, player_world_pos.y),
-    //                 0.0,
-    //                 Vec2::splat(square_size),
-    //                 player_color,
-    //             );
-    //         }
-    //     }
-    //
-    // }
+    for player_transform in &query {
+        for (structure_transform, structure) in &structures_query {
+            let grid = &structure.grid;
+            let square_size = grid.cell_size * 0.95; // Adjust this value to control the size of the square
+
+            // Get the player's position relative to the structure
+            let player_relative_pos =
+                structure.player_relative_position(player_transform.translation, structure_transform);
+
+            // Adjust for the grid's origin
+            let adjusted_player_pos = structure.adjust_for_grid_origin(player_relative_pos);
+
+            // Convert the adjusted position to grid coordinates
+            let (grid_x, grid_y) = grid.world_to_grid(adjusted_player_pos);
+
+            // Check if the player's grid coordinates are within the grid's bounds
+            if structure.is_within_grid_bounds(grid_x, grid_y) {
+                // Player is inside the structure's grid
+
+                // Get the world position for drawing
+                let world_pos = structure.grid_to_world_position((grid_x, grid_y), structure_transform);
+
+                // Draw a green rectangle at the player's current grid position within the structure's grid
+                gizmos.rect_2d(Vec2::new(world_pos.x, world_pos.y), 0.0, Vec2::splat(square_size), GREEN);
+            }
+        }
+    }
 }

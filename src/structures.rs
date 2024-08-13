@@ -25,7 +25,9 @@ impl Plugin for StructuresPlugin {
         if self.debug_enable {
             app.add_systems(
                 Update,
-                (debug_draw_structure_grid, debug_draw_rects).chain().run_if(in_state(GameState::InGame)),
+                (debug_draw_structure_grid, debug_draw_player_inside_structure_rect)
+                    .chain()
+                    .run_if(in_state(GameState::InGame)),
             );
         }
     }
@@ -55,8 +57,8 @@ impl Structure {
     }
 
     // Convert the player's world position to a position relative to the structure's grid
-    pub fn player_relative_position(&self, player_world_pos: Vec3, structure_transform: &Transform) -> Vec3 {
-        player_world_pos - structure_transform.translation
+    pub fn get_relative_position(&self, some_world_pos: Vec3, structure_transform: &Transform) -> Vec3 {
+        some_world_pos - structure_transform.translation
     }
 
     // Adjust a position for the grid's origin by shifting by half a cell size
@@ -70,15 +72,11 @@ impl Structure {
 
     // Function to check if a raw world position is within the grid's bounds
     pub fn is_world_position_within_grid(&self, world_pos: Vec3, structure_transform: &Transform) -> bool {
-        // Convert the player's world position to the structure's local grid coordinates
-        let relative_pos = world_pos - structure_transform.translation;
+        // Convert the world position to the structure's local space
+        let relative_pos = self.get_relative_position(world_pos, structure_transform);
 
-        // Adjust for the grid's origin (if necessary)
-        let adjusted_pos = Vec3::new(
-            relative_pos.x + (self.grid.cell_size / 2.0),
-            relative_pos.y + (self.grid.cell_size / 2.0),
-            relative_pos.z,
-        );
+        // Adjust for the grid's origin
+        let adjusted_pos = self.adjust_for_grid_origin(relative_pos);
 
         // Convert the adjusted position to grid coordinates
         let (grid_x, grid_y) = self.grid.world_to_grid(adjusted_pos);
@@ -87,7 +85,7 @@ impl Structure {
         self.is_within_grid_bounds(grid_x, grid_y)
     }
 
-    // Check if the grid coordinates are within the grid's bounds
+    // Check if some grid coordinates are within the grid's bounds
     pub fn is_within_grid_bounds(&self, grid_x: i32, grid_y: i32) -> bool {
         grid_x >= 0 && grid_x < self.grid.width as i32 && grid_y >= 0 && grid_y < self.grid.height as i32
     }
@@ -147,6 +145,7 @@ fn setup_structures_from_file(
                                 Vec3::new(x_translation, y_translation, 1.0),
                                 structure_component.grid.cell_size,
                                 mesh_scale_factor,
+                                false,
                             );
                         }
                         'W' => {
@@ -156,11 +155,27 @@ fn setup_structures_from_file(
                                 &mut materials,
                                 &mut meshes,
                                 ModuleType::Wall,
-                                Color::from(BLUE),
+                                Color::from(GREY),
                                 (x as i32, y as i32),
                                 Vec3::new(x_translation, y_translation, 1.0),
                                 structure_component.grid.cell_size,
                                 mesh_scale_factor,
+                                false,
+                            );
+                        }
+                        'C' => {
+                            spawn_module(
+                                &mut commands,
+                                structure_entity,
+                                &mut materials,
+                                &mut meshes,
+                                ModuleType::CommandCenter,
+                                Color::from(BLUE),
+                                (x as i32, y as i32),
+                                Vec3::new(x_translation, y_translation, -1.0),
+                                structure_component.grid.cell_size,
+                                mesh_scale_factor,
+                                true,
                             );
                         }
                         _ => continue, // Skip characters that don't correspond to a module
@@ -295,38 +310,9 @@ fn debug_draw_structure_grid(
             )
             .outer_edges();
     }
-
-    /* for (parent, childrens) in &mut parent_query {
-        // To iterate through the entities children, just treat the Children component as a Vec
-        // Alternatively, you could query entities that have a Parent component
-        for child in childrens {
-            if let Ok(module) = child_query.get_mut(*child) {
-                let world_pos = Vec2::new(module.inner_grid_pos.0 as f32, module.inner_grid_pos.1 as f32);
-                let square_size = 50.0 * 0.90; // Adjust this value to control the size of the square
-
-                gizmos.rect_2d(world_pos, 0.0, Vec2::splat(square_size), GREY);
-            }
-        }
-    } */
-
-    /* for (transform, structure) in &structure_query {
-        // loop on structure modules
-        for engine in structure_modules {
-            let world_pos =
-                structure.grid.grid_to_world(engine.inner_grid_pos) + transform.translation;
-            let square_size = structure.grid.cell_size * 0.90; // Adjust this value to control the size of the square
-
-            gizmos.rect_2d(
-                Vec2::new(world_pos.x, world_pos.y),
-                0.0,
-                Vec2::splat(square_size),
-                GREEN,
-            );
-        }
-    } */
 }
 
-fn debug_draw_rects(
+fn debug_draw_player_inside_structure_rect(
     mut gizmos: Gizmos,
     query: Query<&Transform, With<Player>>,
     structures_query: Query<(&Transform, &Structure)>,
@@ -338,7 +324,7 @@ fn debug_draw_rects(
 
             // Get the player's position relative to the structure
             let player_relative_pos =
-                structure.player_relative_position(player_transform.translation, structure_transform);
+                structure.get_relative_position(player_transform.translation, structure_transform);
 
             // Adjust for the grid's origin
             let adjusted_player_pos = structure.adjust_for_grid_origin(player_relative_pos);

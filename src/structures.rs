@@ -23,8 +23,8 @@ impl Plugin for StructuresPlugin {
             .add_systems(
                 Update,
                 (control_command_center_system, move_structure_system).run_if(in_state(GameState::InGame)),
-            );
-        //.add_systems(FixedUpdate, move_structure_system.run_if(in_state(GameState::InGame)));
+            )
+            .add_systems(FixedUpdate, move_structure_system.run_if(in_state(GameState::InGame)));
 
         if self.debug_enable {
             app.add_systems(
@@ -214,7 +214,7 @@ fn setup_structures_from_file(
 
             // Insert the structure bundle
             commands.entity(structure_entity).insert(StructureBundle {
-                rigid_body: RigidBody::Static,
+                rigid_body: RigidBody::Kinematic,
                 structure: structure_component,
                 transform_budle: TransformBundle {
                     local: Transform::from_translation(Vec3::new(500.0, 200.0, 1.0)),
@@ -259,10 +259,6 @@ fn control_command_center_system(
                         if matches!(module.module_type, ModuleType::CommandCenter)
                             && matches!((module.inner_grid_pos.0, module.inner_grid_pos.1), (x, y) if x == player_grid_x && y == player_grid_y)
                         {
-                            debug!(
-                                "Player is inside the Command Center module at grid position: ({}, {})",
-                                player_grid_x, player_grid_y
-                            );
                             // Player can control or release the Command Center by pressing the spacebar.
                             for event in event_reader.read() {
                                 if let InputAction::SpacePressed = event {
@@ -307,23 +303,22 @@ fn control_command_center_system(
 fn move_structure_system(
     mut controlled_structures_query: Query<(Entity, &mut LinearVelocity, &ControlledByPlayer), With<Structure>>,
     player_query: Query<(Entity, &LinearVelocity), (With<Player>, Without<Structure>)>,
+    mut modules: Query<&mut LinearVelocity, (With<Module>, Without<Structure>, Without<Player>)>,
 ) {
-
     // // Loop through all structures that are controlled by the player
-    // for (structure_entity, mut structure_velocity, controlled_by) in &mut controlled_structures_query {
-    //     if let Ok((player_entity, player_velocity)) = player_query.get(controlled_by.player_entity) {
-    //         // Set the structure's velocity to match the player's velocity
-    //         *structure_velocity = *player_velocity;
-    //     }
-    // }
+    for (structure_entity, mut structure_velocity, controlled_by) in &mut controlled_structures_query {
+        if let Ok((player_entity, player_velocity)) = player_query.get(controlled_by.player_entity) {
+            // Set the structure's velocity to match the player's velocity
+            *structure_velocity = *player_velocity;
+
+            for mut module_vel in modules.iter_mut() {
+                *module_vel = *structure_velocity;
+            }
+        }
+    }
 }
 
-fn debug_draw_structure_grid(
-    mut gizmos: Gizmos,
-    structures_query: Query<(&Transform, &Structure)>,
-    mut parent_query: Query<(Entity, &Children), With<Structure>>,
-    mut child_query: Query<&mut Module>,
-) {
+fn debug_draw_structure_grid(mut gizmos: Gizmos, structures_query: Query<(&Transform, &Structure)>) {
     for (transform, structure) in &structures_query {
         let world_pos = transform.translation;
         let grid = &structure.grid;

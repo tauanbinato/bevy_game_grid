@@ -1,4 +1,5 @@
 use crate::grid::Grid;
+use crate::inputs::InputAction;
 use avian2d::prelude::*;
 use bevy::input::keyboard::KeyCode;
 use bevy::prelude::*;
@@ -12,10 +13,8 @@ pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(PlayerGridPosition::default())
-            .add_event::<InputAction>()
+        app.insert_resource(PlayerResource::default())
             .add_systems(OnEnter(GameState::InGame), spawn_player)
-            .add_systems(Update, keyboard_input.run_if(in_state(GameState::InGame)))
             .add_systems(FixedUpdate, movement_system.run_if(in_state(GameState::InGame)));
     }
 }
@@ -24,8 +23,10 @@ impl Plugin for PlayerPlugin {
 pub struct Player;
 
 #[derive(Resource, Default)]
-pub struct PlayerGridPosition {
+pub struct PlayerResource {
     pub grid_position: (i32, i32),
+    pub is_controlling_structure: bool,
+    pub inside_structure: Option<Entity>,
 }
 
 fn spawn_player(
@@ -33,7 +34,7 @@ fn spawn_player(
     mut materials: ResMut<Assets<ColorMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut grid: ResMut<Grid>,
-    mut player_grid_position: ResMut<PlayerGridPosition>,
+    mut player_grid_position: ResMut<PlayerResource>,
 ) {
     let initial_grid_position = (2, 2);
     let initial_world_position = grid.grid_to_world(initial_grid_position);
@@ -49,9 +50,10 @@ fn spawn_player(
                 mesh: meshes.add(Circle { radius: 10.0 }).into(),
                 material: materials.add(ColorMaterial::from(Color::WHITE)),
                 transform: Transform {
-                    translation: Vec3::new(initial_world_position.x, initial_world_position.y, 1.0),
+                    translation: Vec3::new(initial_world_position.x, initial_world_position.y, 5.0),
                     ..default()
                 },
+                visibility: Visibility::Visible,
                 ..default()
             },
         ))
@@ -60,41 +62,16 @@ fn spawn_player(
     grid.insert_new(initial_grid_position.0, initial_grid_position.1, player_entity);
 }
 
-/// An event sent for a movement input action.
-#[derive(Event)]
-pub enum InputAction {
-    Move(Vec3),
-    SpacePressed,
-}
-
-fn keyboard_input(mut movement_event_writer: EventWriter<InputAction>, keys: Res<ButtonInput<KeyCode>>) {
-    if keys.just_released(KeyCode::Space) {
-        movement_event_writer.send(InputAction::SpacePressed);
-    }
-
-    let mut direction = Vec3::ZERO;
-
-    if keys.pressed(KeyCode::KeyW) {
-        direction.y += 1.0;
-    }
-    if keys.pressed(KeyCode::KeyS) {
-        direction.y -= 1.0;
-    }
-    if keys.pressed(KeyCode::KeyA) {
-        direction.x -= 1.0;
-    }
-    if keys.pressed(KeyCode::KeyD) {
-        direction.x += 1.0;
-    }
-    if direction.length() > 0.0 {
-        movement_event_writer.send(InputAction::Move(direction.normalize()));
-    }
-}
 fn movement_system(
     mut query: Query<&mut LinearVelocity, With<Player>>,
     mut input_reader: EventReader<InputAction>,
     time: Res<Time>,
+    player_resource: Res<PlayerResource>,
 ) {
+    if player_resource.is_controlling_structure {
+        return;
+    }
+
     let delta_time = time.delta_seconds();
 
     for event in input_reader.read() {

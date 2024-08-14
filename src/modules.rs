@@ -5,7 +5,7 @@ use bevy::asset::Assets;
 use bevy::color::Color;
 use bevy::hierarchy::BuildChildren;
 use bevy::math::{Vec2, Vec3};
-use bevy::prelude::{default, Bundle, Commands, Component, Entity, Mesh, Rectangle, ResMut, Transform};
+use bevy::prelude::{default, Bundle, Commands, Component, Entity, Mesh, Rectangle, ResMut, Transform, Visibility};
 use bevy::sprite::{ColorMaterial, MaterialMesh2dBundle};
 
 #[derive(Debug, Default)]
@@ -58,7 +58,7 @@ pub fn spawn_module(
         // Spawn the module entity
         module_entity = commands
             .spawn(ModuleBundleRigid {
-                rigidbody: RigidBody::Kinematic,
+                rigidbody: RigidBody::Dynamic,
                 collider: Collider::rectangle(cell_size * mesh_scale_factor, cell_size * mesh_scale_factor),
                 collider_density: ColliderDensity(0.0),
                 mass: Mass(5000.0),
@@ -69,6 +69,7 @@ pub fn spawn_module(
                         .add(Rectangle { half_size: Vec2::splat((cell_size / 2.0) * mesh_scale_factor) })
                         .into(),
                     transform: Transform { translation, ..default() },
+                    visibility: Visibility::Inherited,
                     ..default()
                 },
             })
@@ -84,6 +85,7 @@ pub fn spawn_module(
                         .add(Rectangle { half_size: Vec2::splat((cell_size / 2.0) * mesh_scale_factor) })
                         .into(),
                     transform: Transform { translation, ..default() },
+                    visibility: Visibility::Inherited,
                     ..default()
                 },
             })

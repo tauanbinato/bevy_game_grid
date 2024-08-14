@@ -1,14 +1,14 @@
 use avian2d::prelude::*;
 use bevy::app::{App, Plugin, Update};
 use bevy::color::palettes::css::*;
-use bevy::ecs::world;
 use bevy::math::Vec3;
 use bevy::prelude::*;
 
 use crate::asset_loader::{AssetBlob, AssetStore, StructuresData};
 use crate::grid::Grid;
+use crate::inputs::InputAction;
 use crate::modules::{spawn_module, Module, ModuleType};
-use crate::player::{InputAction, Player};
+use crate::player::{Player, PlayerResource};
 use crate::state::GameState;
 
 #[derive(Default)]
@@ -19,10 +19,17 @@ pub struct StructuresPlugin {
 impl Plugin for StructuresPlugin {
     fn build(&self, app: &mut App) {
         app.add_event::<ModuleInteractionEvent>()
+            .add_event::<StructureInteractionEvent>()
             .add_systems(OnEnter(GameState::BuildingStructures), setup_structures_from_file)
             .add_systems(
                 Update,
-                (control_command_center_system, move_structure_system).run_if(in_state(GameState::InGame)),
+                (
+                    detect_player_inside_structure_system,
+                    make_player_child_of_structure_system,
+                    control_command_center_system,
+                )
+                    .chain()
+                    .run_if(in_state(GameState::InGame)),
             )
             .add_systems(FixedUpdate, move_structure_system.run_if(in_state(GameState::InGame)));
 
@@ -46,8 +53,7 @@ struct ControlledByPlayer {
 struct StructureBundle {
     rigid_body: RigidBody,
     structure: Structure,
-    transform_budle: TransformBundle,
-    inherited_visibility: InheritedVisibility,
+    spatial_bundle: SpatialBundle,
 }
 
 #[derive(Component, Debug)]
@@ -216,11 +222,11 @@ fn setup_structures_from_file(
             commands.entity(structure_entity).insert(StructureBundle {
                 rigid_body: RigidBody::Kinematic,
                 structure: structure_component,
-                transform_budle: TransformBundle {
-                    local: Transform::from_translation(Vec3::new(500.0, 200.0, 1.0)),
-                    ..default()
+                spatial_bundle: SpatialBundle {
+                    transform: Transform::from_translation(Vec3::new(500.0, 200.0, 1.0)),
+                    visibility: Visibility::Visible,
+                    ..Default::default()
                 },
-                inherited_visibility: InheritedVisibility::default(),
             });
         }
         next_state.set(GameState::InGame);
@@ -235,16 +241,71 @@ pub enum ModuleInteractionEvent {
     ReleaseControl { player_entity: Entity, structure_entity: Entity },
 }
 
+#[derive(Event)]
+pub enum StructureInteractionEvent {
+    PlayerEntered { player_entity: Entity, structure_entity: Entity },
+    PlayerExited { player_entity: Entity, structure_entity: Entity },
+}
+
+fn detect_player_inside_structure_system(
+    mut player_query: Query<(Entity, &Transform), With<Player>>,
+    mut structure_query: Query<(Entity, &Structure, &Transform)>,
+    mut event_writer: EventWriter<StructureInteractionEvent>,
+    mut player_resource: ResMut<PlayerResource>,
+) {
+    for (player_entity, player_transform) in &mut player_query {
+        for (structure_entity, structure, structure_transform) in &mut structure_query {
+            if structure.is_world_position_within_grid(player_transform.translation, structure_transform) {
+                // Emit an event for the player entering the structure
+                if player_resource.inside_structure != Some(structure_entity) {
+                    player_resource.inside_structure = Some(structure_entity);
+                    event_writer.send(StructureInteractionEvent::PlayerEntered { player_entity, structure_entity });
+                }
+            } else {
+                // Emit an event for the player exiting the structure
+                if player_resource.inside_structure == Some(structure_entity) {
+                    player_resource.inside_structure = None;
+                    event_writer.send(StructureInteractionEvent::PlayerExited { player_entity, structure_entity });
+                }
+            }
+        }
+    }
+}
+
+// TODO: USE OBSERVER INSTEAD OF SYSTEM
+fn make_player_child_of_structure_system(
+    mut event_reader: EventReader<StructureInteractionEvent>,
+    mut player_query: Query<(Entity, &mut Parent), With<Player>>,
+    mut structure_query: Query<(Entity, &Children), With<Structure>>,
+    mut command: Commands,
+) {
+    for event in event_reader.read() {
+        match event {
+            StructureInteractionEvent::PlayerEntered { player_entity, structure_entity } => {
+                //command.entity(*structure_entity).add_child(*player_entity);
+                command.entity(*player_entity).set_parent_in_place(*structure_entity);
+                debug!("Player entered the structure.");
+            }
+            StructureInteractionEvent::PlayerExited { player_entity, structure_entity } => {
+                //command.entity(*structure_entity).remove_children([*player_entity]);
+                debug!("Player exited the structure.");
+                command.entity(*player_entity).remove_parent_in_place();
+            }
+        }
+    }
+}
+
 fn control_command_center_system(
     mut event_reader: EventReader<InputAction>,
     mut event_writer: EventWriter<ModuleInteractionEvent>,
-    player_query: Query<(Entity, &Transform), With<Player>>,
+    mut player_query: Query<(Entity, &Transform, &mut LinearVelocity), With<Player>>,
     mut command: Commands,
     mut parent_query: Query<(Entity, &Structure, &Transform, &Children)>,
     mut child_query: Query<&mut Module>,
+    mut player_resource: ResMut<PlayerResource>,
 ) {
     //loop for player pos
-    for (player_entity, player_transform) in &player_query {
+    for (player_entity, player_transform, mut player_velocity) in &mut player_query {
         for (structure_entity, structure, structure_transform, children) in &mut parent_query {
             // Convert the adjusted position to grid coordinates
             let (player_grid_x, player_grid_y) =
@@ -263,6 +324,8 @@ fn control_command_center_system(
                             for event in event_reader.read() {
                                 if let InputAction::SpacePressed = event {
                                     if module.entity_connected.is_none() {
+                                        *player_velocity = LinearVelocity::default();
+
                                         // Take control if no one is controlling it
                                         module.entity_connected = Some(player_entity);
                                         debug!("Player is now controlling the Command Center.");
@@ -270,6 +333,10 @@ fn control_command_center_system(
                                         // lets insert the PlayerControlled component to the structure
                                         command.entity(structure_entity).insert(ControlledByPlayer { player_entity });
 
+                                        // Update the player resource to indicate that the player is controlling a structure
+                                        player_resource.is_controlling_structure = true;
+
+                                        // Emit an event for taking control
                                         event_writer.send(ModuleInteractionEvent::TakeControl {
                                             player_entity,
                                             structure_entity,
@@ -281,6 +348,9 @@ fn control_command_center_system(
 
                                         // lets remove the PlayerControlled component from the structure
                                         command.entity(structure_entity).remove::<ControlledByPlayer>();
+
+                                        // Update the player resource to indicate that the player is not controlling a structure
+                                        player_resource.is_controlling_structure = false;
 
                                         // Emit an event for releasing control
                                         event_writer.send(ModuleInteractionEvent::ReleaseControl {
@@ -301,19 +371,36 @@ fn control_command_center_system(
 }
 
 fn move_structure_system(
-    mut controlled_structures_query: Query<(Entity, &mut LinearVelocity, &ControlledByPlayer), With<Structure>>,
+    mut controlled_structure_query: Query<(Entity, &mut LinearVelocity, &ControlledByPlayer), With<Structure>>,
     player_query: Query<(Entity, &LinearVelocity), (With<Player>, Without<Structure>)>,
     mut modules: Query<&mut LinearVelocity, (With<Module>, Without<Structure>, Without<Player>)>,
+    player_resource: ResMut<PlayerResource>,
+    mut input_reader: EventReader<InputAction>,
+    time: Res<Time>,
 ) {
-    // // Loop through all structures that are controlled by the player
-    for (structure_entity, mut structure_velocity, controlled_by) in &mut controlled_structures_query {
-        if let Ok((player_entity, player_velocity)) = player_query.get(controlled_by.player_entity) {
-            // Set the structure's velocity to match the player's velocity
-            *structure_velocity = *player_velocity;
+    if player_resource.is_controlling_structure {
+        let delta_time = time.delta_seconds();
+        // Get structure controlled by player should be unique
+        let (structure_entity, mut structure_velocity, controlled_by) = controlled_structure_query.single_mut();
 
-            for mut module_vel in modules.iter_mut() {
-                *module_vel = *structure_velocity;
+        if let Ok((player_entity, player_velocity)) = player_query.get(controlled_by.player_entity) {
+            for event in input_reader.read() {
+                match event {
+                    InputAction::Move(direction) => {
+                        structure_velocity.x += direction.x * 100.0 * delta_time;
+                        structure_velocity.y += direction.y * 100.0 * delta_time;
+
+                        /* for mut module_vel in modules.iter_mut() {
+                            module_vel.x += direction.x * 100.0 * delta_time;
+                            module_vel.y += direction.y * 100.0 * delta_time;
+                        } */
+                    }
+                    _ => {}
+                }
             }
+
+            // Set the structure's velocity to match the player's velocity
+            //*structure_velocity = *player_velocity;
         }
     }
 }

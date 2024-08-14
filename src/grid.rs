@@ -1,5 +1,5 @@
 use crate::asset_loader::{AssetBlob, AssetStore, Level};
-use crate::player::{Player, PlayerGridPosition};
+use crate::player::{Player, PlayerResource};
 use crate::state::GameState;
 use avian2d::collision::Collider;
 use avian2d::prelude::{LinearVelocity, RigidBody};
@@ -248,7 +248,7 @@ fn detect_grid_updates(
     query: Query<(Entity, &Transform), With<Player>>,
     mut grid: ResMut<Grid>,
     mut event_writer: EventWriter<PlayerGridChangeEvent>,
-    mut player_grid_position: ResMut<PlayerGridPosition>,
+    mut player_grid_position: ResMut<PlayerResource>,
 ) {
     for (entity, transform) in &query {
         let (updated_grid_x, updated_grid_y) = grid.world_to_grid(transform.translation);

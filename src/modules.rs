@@ -27,6 +27,8 @@ pub struct Module {
 pub struct ModuleBundleRigid {
     pub rigidbody: RigidBody,
     pub collider: Collider,
+    pub collider_density: ColliderDensity,
+    pub mass: Mass,
     pub module: Module,
     pub mesh_bundle: MaterialMesh2dBundle<ColorMaterial>,
 }
@@ -58,6 +60,8 @@ pub fn spawn_module(
             .spawn(ModuleBundleRigid {
                 rigidbody: RigidBody::Kinematic,
                 collider: Collider::rectangle(cell_size * mesh_scale_factor, cell_size * mesh_scale_factor),
+                collider_density: ColliderDensity(0.0),
+                mass: Mass(5000.0),
                 module: Module { module_type, inner_grid_pos: grid_pos, ..default() },
                 mesh_bundle: MaterialMesh2dBundle {
                     material: materials.add(ColorMaterial::from(color)),

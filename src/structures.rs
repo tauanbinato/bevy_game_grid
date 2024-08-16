@@ -53,8 +53,10 @@ struct ControlledByPlayer {
 struct StructureBundle {
     rigid_body: RigidBody,
     collider: Collider,
+    collision_margin: CollisionMargin,
     structure: Structure,
     spatial_bundle: SpatialBundle,
+    collision_layers: CollisionLayers,
 }
 
 #[derive(Component, Debug)]
@@ -148,7 +150,7 @@ fn setup_structures_from_file(
 
             debug!("Grid width: {}, Grid height: {}", grid_width, grid_height);
 
-            let mesh_scale_factor = 0.97; // Adjust this value to reduce the mesh size
+            let mesh_scale_factor = 0.90; // Adjust this value to reduce the mesh size
 
             structure_component.grid = Grid::new(
                 grid_width as u32,  // Width of the structure
@@ -223,11 +225,13 @@ fn setup_structures_from_file(
 
             // Insert the structure bundle
             commands.entity(structure_entity).insert(StructureBundle {
-                rigid_body: RigidBody::Kinematic,
+                rigid_body: RigidBody::Dynamic,
+                collision_layers: CollisionLayers::NONE,
                 collider: Collider::rectangle(
                     grid_width * structure_component.grid.cell_size,
                     grid_height * structure_component.grid.cell_size,
                 ),
+                collision_margin: CollisionMargin(0.1),
                 structure: structure_component,
                 spatial_bundle: SpatialBundle {
                     transform: Transform::from_translation(Vec3::new(500.0, 200.0, 1.0)),
@@ -396,9 +400,9 @@ fn move_structure_system(
             }
             *player_velocity = structure_velocity.clone();
 
-            for (mut module_velocity) in &mut modules {
+            /* for (mut module_velocity) in &mut modules {
                 *module_velocity = structure_velocity.clone();
-            }
+            } */
         }
     }
 }

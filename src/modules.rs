@@ -25,7 +25,6 @@ pub struct Module {
 
 #[derive(Bundle)]
 pub struct ModuleBundleRigid {
-    pub rigidbody: RigidBody,
     pub collider: Collider,
     pub collider_density: ColliderDensity,
     pub mass: Mass,
@@ -52,15 +51,12 @@ pub fn spawn_module(
     mesh_scale_factor: f32,
     interactable: bool,
 ) {
-    let module_entity: Entity;
-
     if !interactable {
         // Spawn the module entity
-        module_entity = commands
-            .spawn(ModuleBundleRigid {
-                rigidbody: RigidBody::Kinematic,
+        commands.entity(structure_entity).with_children(|children| {
+            children.spawn(ModuleBundleRigid {
                 collider: Collider::rectangle(cell_size * mesh_scale_factor, cell_size * mesh_scale_factor),
-                collider_density: ColliderDensity(100.0),
+                collider_density: ColliderDensity(0.0),
                 mass: Mass(5000.0),
                 module: Module { module_type, inner_grid_pos: grid_pos, ..default() },
                 mesh_bundle: MaterialMesh2dBundle {
@@ -72,12 +68,11 @@ pub fn spawn_module(
                     visibility: Visibility::Inherited,
                     ..default()
                 },
-            })
-            .id();
+            });
+        });
     } else {
-        // Spawn the module entity
-        module_entity = commands
-            .spawn(ModuleBundleInteractable {
+        commands.entity(structure_entity).with_children(|children| {
+            children.spawn(ModuleBundleInteractable {
                 module: Module { module_type, inner_grid_pos: grid_pos, ..default() },
                 mesh_bundle: MaterialMesh2dBundle {
                     material: materials.add(ColorMaterial::from(color)),
@@ -88,10 +83,7 @@ pub fn spawn_module(
                     visibility: Visibility::Inherited,
                     ..default()
                 },
-            })
-            .id();
+            });
+        });
     }
-
-    // Add the module as a child to the structure entity
-    commands.entity(structure_entity).add_child(module_entity);
 }

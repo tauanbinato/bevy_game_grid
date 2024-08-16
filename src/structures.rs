@@ -8,7 +8,7 @@ use crate::asset_loader::{AssetBlob, AssetStore, StructuresData};
 use crate::grid::Grid;
 use crate::inputs::InputAction;
 use crate::modules::{spawn_module, Module, ModuleType};
-use crate::player::{Player, PlayerResource};
+use crate::player::{self, Player, PlayerResource};
 use crate::state::GameState;
 
 #[derive(Default)]
@@ -81,9 +81,9 @@ impl Structure {
     }
 
     // Convert the player's world position to grid coordinates relative to the structure
-    pub fn world_to_grid(&self, world_pos: Vec3, structure_transform: &Transform) -> (i32, i32) {
+    pub fn world_to_grid(&self, global_world_pos: Vec3, structure_transform: &Transform) -> (i32, i32) {
         // Convert the world position to the structure's local space
-        let relative_pos = self.get_relative_position(world_pos, structure_transform);
+        let relative_pos = self.get_relative_position(global_world_pos, structure_transform);
 
         // Adjust for the grid's origin
         let adjusted_pos = self.adjust_for_grid_origin(relative_pos);
@@ -93,9 +93,9 @@ impl Structure {
     }
 
     // Function to check if a raw world position is within the grid's bounds
-    pub fn is_world_position_within_grid(&self, world_pos: Vec3, structure_transform: &Transform) -> bool {
+    pub fn is_world_position_within_grid(&self, global_world_pos: Vec3, structure_transform: &Transform) -> bool {
         // Convert the world position to the structure's local space
-        let relative_pos = self.get_relative_position(world_pos, structure_transform);
+        let relative_pos = self.get_relative_position(global_world_pos, structure_transform);
 
         // Adjust for the grid's origin
         let adjusted_pos = self.adjust_for_grid_origin(relative_pos);
@@ -275,21 +275,23 @@ fn detect_player_inside_structure_system(
 // TODO: USE OBSERVER INSTEAD OF SYSTEM
 fn make_player_child_of_structure_system(
     mut event_reader: EventReader<StructureInteractionEvent>,
-    mut player_query: Query<(Entity, &mut Parent), With<Player>>,
+    mut player_query: Query<(Entity, &Transform), With<Player>>,
     mut structure_query: Query<(Entity, &Children), With<Structure>>,
     mut command: Commands,
 ) {
+    let (player_entity, transform) = player_query.single_mut();
+    //debug!("Player translation is: {:?}", transform);
     for event in event_reader.read() {
         match event {
             StructureInteractionEvent::PlayerEntered { player_entity, structure_entity } => {
-                //command.entity(*structure_entity).add_child(*player_entity);
+                debug!("Player translation is: {:?}", transform.translation);
                 command.entity(*player_entity).set_parent_in_place(*structure_entity);
-                debug!("Player entered the structure.");
+                debug!("Player is now a child of the structure.");
+                debug!("Player translation is: {:?}", transform.translation);
             }
             StructureInteractionEvent::PlayerExited { player_entity, structure_entity } => {
-                //command.entity(*structure_entity).remove_children([*player_entity]);
-                debug!("Player exited the structure.");
-                command.entity(*player_entity).remove_parent_in_place();
+                //command.entity(*player_entity).remove_parent_in_place();
+                //debug!("Player is no longer a child of the structure.");
             }
         }
     }
@@ -298,7 +300,7 @@ fn make_player_child_of_structure_system(
 fn control_command_center_system(
     mut event_reader: EventReader<InputAction>,
     mut event_writer: EventWriter<ModuleInteractionEvent>,
-    mut player_query: Query<(Entity, &Transform, &mut LinearVelocity), With<Player>>,
+    mut player_query: Query<(Entity, &GlobalTransform, &mut LinearVelocity), With<Player>>,
     mut command: Commands,
     mut parent_query: Query<(Entity, &Structure, &Transform, &Children)>,
     mut child_query: Query<&mut Module>,
@@ -309,7 +311,7 @@ fn control_command_center_system(
         for (structure_entity, structure, structure_transform, children) in &mut parent_query {
             // Convert the adjusted position to grid coordinates
             let (player_grid_x, player_grid_y) =
-                structure.world_to_grid(player_transform.translation, structure_transform);
+                structure.world_to_grid(player_transform.translation(), structure_transform);
 
             // Check if the player's grid coordinates are within the grid's bounds
             if structure.is_within_grid_bounds(player_grid_x, player_grid_y) {
@@ -425,8 +427,9 @@ fn debug_draw_structure_grid(mut gizmos: Gizmos, structures_query: Query<(&Trans
 
 fn debug_draw_player_inside_structure_rect(
     mut gizmos: Gizmos,
-    query: Query<&Transform, With<Player>>,
+    query: Query<&GlobalTransform, With<Player>>,
     structures_query: Query<(&Transform, &Structure)>,
+    player_resource: Res<PlayerResource>,
 ) {
     for player_transform in &query {
         for (structure_transform, structure) in &structures_query {
@@ -434,7 +437,7 @@ fn debug_draw_player_inside_structure_rect(
             let square_size = grid.cell_size * 0.95; // Adjust this value to control the size of the square
 
             // Convert the adjusted position to grid coordinates
-            let (grid_x, grid_y) = structure.world_to_grid(player_transform.translation, structure_transform);
+            let (grid_x, grid_y) = structure.world_to_grid(player_transform.translation(), structure_transform);
 
             // Check if the player's grid coordinates are within the grid's bounds
             if structure.is_within_grid_bounds(grid_x, grid_y) {

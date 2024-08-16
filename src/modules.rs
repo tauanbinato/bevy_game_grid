@@ -58,7 +58,7 @@ pub fn spawn_module(
         // Spawn the module entity
         module_entity = commands
             .spawn(ModuleBundleRigid {
-                rigidbody: RigidBody::Dynamic,
+                rigidbody: RigidBody::Kinematic,
                 collider: Collider::rectangle(cell_size * mesh_scale_factor, cell_size * mesh_scale_factor),
                 collider_density: ColliderDensity(0.0),
                 mass: Mass(5000.0),

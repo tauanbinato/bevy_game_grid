@@ -1,3 +1,4 @@
+use avian2d::math::PI;
 use avian2d::prelude::*;
 use bevy::app::{App, Plugin, Update};
 use bevy::color::palettes::css::*;
@@ -35,8 +36,8 @@ impl Plugin for StructuresPlugin {
 
         if self.debug_enable {
             app.add_systems(
-                Update,
-                (debug_draw_structure_grid, debug_draw_player_inside_structure_rect)
+                PostUpdate,
+                (debug_draw_structure_grid.after(PhysicsSet::Sync), debug_draw_player_inside_structure_rect)
                     .chain()
                     .run_if(in_state(GameState::InGame)),
             );
@@ -409,19 +410,40 @@ fn move_structure_system(
 
 fn debug_draw_structure_grid(mut gizmos: Gizmos, structures_query: Query<(&Transform, &Structure)>) {
     for (transform, structure) in &structures_query {
-        let world_pos = transform.translation;
-        let grid = &structure.grid;
+        // Get the position and rotation from the transform
+        let world_pos = transform.translation.truncate(); // Get the 2D position (x, y)
+        let z_rotation = transform.rotation.to_euler(EulerRot::XYZ).2; // Rotation in radians
 
-        // Draw the grid
-        gizmos
-            .grid_2d(
-                Vec2::new(world_pos.x, world_pos.y),
-                0.0,
-                UVec2::new(grid.width, grid.height),
-                Vec2::splat(grid.cell_size),
-                Color::from(GREY),
-            )
-            .outer_edges();
+        // Calculate the center offset of the grid
+        let grid_center_offset = Vec2::new(
+            (structure.grid.width as f32 * structure.grid.cell_size) / 2.0,
+            (structure.grid.height as f32 * structure.grid.cell_size) / 2.0,
+        );
+
+        // Iterate through each cell in the grid
+        for y in 0..structure.grid.height {
+            for x in 0..structure.grid.width {
+                // Calculate the local position of each cell
+                let cell_local_pos = Vec2::new(
+                    x as f32 * structure.grid.cell_size - grid_center_offset.x,
+                    y as f32 * structure.grid.cell_size - grid_center_offset.y,
+                );
+
+                // Apply rotation to the cell's local position
+                let rotated_cell_pos = Mat2::from_angle(z_rotation) * cell_local_pos;
+
+                // Calculate the final world position of the cell
+                let cell_world_pos = world_pos + rotated_cell_pos;
+
+                // Draw the rectangle for the cell
+                gizmos.rect_2d(
+                    cell_world_pos,
+                    z_rotation,
+                    Vec2::splat(structure.grid.cell_size * 0.95), // Slightly smaller to leave gaps between cells
+                    Color::from(GREY),
+                );
+            }
+        }
     }
 }
 

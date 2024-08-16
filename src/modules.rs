@@ -60,7 +60,7 @@ pub fn spawn_module(
             .spawn(ModuleBundleRigid {
                 rigidbody: RigidBody::Kinematic,
                 collider: Collider::rectangle(cell_size * mesh_scale_factor, cell_size * mesh_scale_factor),
-                collider_density: ColliderDensity(0.0),
+                collider_density: ColliderDensity(100.0),
                 mass: Mass(5000.0),
                 module: Module { module_type, inner_grid_pos: grid_pos, ..default() },
                 mesh_bundle: MaterialMesh2dBundle {

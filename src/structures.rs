@@ -52,6 +52,7 @@ struct ControlledByPlayer {
 #[derive(Bundle)]
 struct StructureBundle {
     rigid_body: RigidBody,
+    collider: Collider,
     structure: Structure,
     spatial_bundle: SpatialBundle,
 }
@@ -159,8 +160,10 @@ fn setup_structures_from_file(
 
             for (y, row) in structure_data.iter().enumerate() {
                 for (x, cell) in row.chars().enumerate() {
-                    let x_translation = (x as f32 - grid_width / 2.0) * structure_component.grid.cell_size;
-                    let y_translation = (grid_height / 2.0 - y as f32) * structure_component.grid.cell_size;
+                    let x_translation = ((x as f32 - (grid_width / 2.0)) * structure_component.grid.cell_size)
+                        + (structure_component.grid.cell_size / 2.0);
+                    let y_translation = ((grid_height / 2.0) - y as f32) * structure_component.grid.cell_size
+                        - (structure_component.grid.cell_size / 2.0);
 
                     // Match the character to determine the type of module to spawn
                     match cell {
@@ -214,13 +217,17 @@ fn setup_structures_from_file(
                         _ => continue, // Skip characters that don't correspond to a module
                     };
 
-                    structure_component.grid.insert(x as i32, y as i32);
+                    structure_component.grid.insert(y as i32, x as i32);
                 }
             }
 
             // Insert the structure bundle
             commands.entity(structure_entity).insert(StructureBundle {
                 rigid_body: RigidBody::Kinematic,
+                collider: Collider::rectangle(
+                    grid_width * structure_component.grid.cell_size,
+                    grid_height * structure_component.grid.cell_size,
+                ),
                 structure: structure_component,
                 spatial_bundle: SpatialBundle {
                     transform: Transform::from_translation(Vec3::new(500.0, 200.0, 1.0)),
@@ -248,14 +255,14 @@ pub enum StructureInteractionEvent {
 }
 
 fn detect_player_inside_structure_system(
-    mut player_query: Query<(Entity, &Transform), With<Player>>,
+    mut player_query: Query<(Entity, &GlobalTransform), With<Player>>,
     mut structure_query: Query<(Entity, &Structure, &Transform)>,
     mut event_writer: EventWriter<StructureInteractionEvent>,
     mut player_resource: ResMut<PlayerResource>,
 ) {
     for (player_entity, player_transform) in &mut player_query {
         for (structure_entity, structure, structure_transform) in &mut structure_query {
-            if structure.is_world_position_within_grid(player_transform.translation, structure_transform) {
+            if structure.is_world_position_within_grid(player_transform.translation(), structure_transform) {
                 // Emit an event for the player entering the structure
                 if player_resource.inside_structure != Some(structure_entity) {
                     player_resource.inside_structure = Some(structure_entity);
@@ -275,23 +282,17 @@ fn detect_player_inside_structure_system(
 // TODO: USE OBSERVER INSTEAD OF SYSTEM
 fn make_player_child_of_structure_system(
     mut event_reader: EventReader<StructureInteractionEvent>,
-    mut player_query: Query<(Entity, &Transform), With<Player>>,
-    mut structure_query: Query<(Entity, &Children), With<Structure>>,
     mut command: Commands,
 ) {
-    let (player_entity, transform) = player_query.single_mut();
-    //debug!("Player translation is: {:?}", transform);
     for event in event_reader.read() {
         match event {
             StructureInteractionEvent::PlayerEntered { player_entity, structure_entity } => {
-                debug!("Player translation is: {:?}", transform.translation);
                 command.entity(*player_entity).set_parent_in_place(*structure_entity);
                 debug!("Player is now a child of the structure.");
-                debug!("Player translation is: {:?}", transform.translation);
             }
-            StructureInteractionEvent::PlayerExited { player_entity, structure_entity } => {
-                //command.entity(*player_entity).remove_parent_in_place();
-                //debug!("Player is no longer a child of the structure.");
+            StructureInteractionEvent::PlayerExited { player_entity, structure_entity: _ } => {
+                command.entity(*player_entity).remove_parent_in_place();
+                debug!("Player is no longer a child of the structure.");
             }
         }
     }
@@ -326,8 +327,6 @@ fn control_command_center_system(
                             for event in event_reader.read() {
                                 if let InputAction::SpacePressed = event {
                                     if module.entity_connected.is_none() {
-                                        *player_velocity = LinearVelocity::default();
-
                                         // Take control if no one is controlling it
                                         module.entity_connected = Some(player_entity);
                                         debug!("Player is now controlling the Command Center.");
@@ -374,7 +373,7 @@ fn control_command_center_system(
 
 fn move_structure_system(
     mut controlled_structure_query: Query<(Entity, &mut LinearVelocity, &ControlledByPlayer), With<Structure>>,
-    player_query: Query<(Entity, &LinearVelocity), (With<Player>, Without<Structure>)>,
+    mut player_query: Query<(Entity, &mut LinearVelocity), (With<Player>, Without<Structure>)>,
     mut modules: Query<&mut LinearVelocity, (With<Module>, Without<Structure>, Without<Player>)>,
     player_resource: ResMut<PlayerResource>,
     mut input_reader: EventReader<InputAction>,
@@ -385,24 +384,21 @@ fn move_structure_system(
         // Get structure controlled by player should be unique
         let (structure_entity, mut structure_velocity, controlled_by) = controlled_structure_query.single_mut();
 
-        if let Ok((player_entity, player_velocity)) = player_query.get(controlled_by.player_entity) {
+        if let Ok((player_entity, mut player_velocity)) = player_query.get_mut(controlled_by.player_entity) {
             for event in input_reader.read() {
                 match event {
                     InputAction::Move(direction) => {
                         structure_velocity.x += direction.x * 100.0 * delta_time;
                         structure_velocity.y += direction.y * 100.0 * delta_time;
-
-                        /* for mut module_vel in modules.iter_mut() {
-                            module_vel.x += direction.x * 100.0 * delta_time;
-                            module_vel.y += direction.y * 100.0 * delta_time;
-                        } */
                     }
                     _ => {}
                 }
             }
+            *player_velocity = structure_velocity.clone();
 
-            // Set the structure's velocity to match the player's velocity
-            //*structure_velocity = *player_velocity;
+            for (mut module_velocity) in &mut modules {
+                *module_velocity = structure_velocity.clone();
+            }
         }
     }
 }
@@ -415,7 +411,7 @@ fn debug_draw_structure_grid(mut gizmos: Gizmos, structures_query: Query<(&Trans
         // Draw the grid
         gizmos
             .grid_2d(
-                Vec2::new(world_pos.x - grid.cell_size / 2.0, world_pos.y + grid.cell_size / 2.0),
+                Vec2::new(world_pos.x, world_pos.y),
                 0.0,
                 UVec2::new(grid.width, grid.height),
                 Vec2::splat(grid.cell_size),

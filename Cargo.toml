@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 bevy = { version = "0.14.1", features = ["dynamic_linking"] }
-avian2d = "0.1"
+avian2d = { version = "0.1", features = ["debug-plugin"] }
 iyes_perf_ui = "0.3.0"
 serde = { version = "1.0.204", features = ["derive"] }
 thiserror = "1.0.63"

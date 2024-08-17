@@ -1,8 +1,8 @@
 {
-  "width": 0,
-  "height": 0,
+  "width": 1,
+  "height": 1,
   "cell_size": 50.0,
   "world": [
-    ""
+    "W"
   ]
 }

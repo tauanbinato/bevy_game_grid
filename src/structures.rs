@@ -4,8 +4,8 @@ use crate::inputs::InputAction;
 use crate::modules::{spawn_module, Module, ModuleType};
 use crate::player::{self, Player, PlayerResource};
 use crate::state::GameState;
-use avian2d::collision::contact_query::{contact, distance};
 use avian2d::math::{Quaternion, PI};
+use avian2d::parry::query::closest_points;
 use avian2d::prelude::*;
 use bevy::app::{App, Plugin, Update};
 use bevy::color::palettes::css::*;
@@ -23,22 +23,20 @@ impl Plugin for StructuresPlugin {
         app.add_event::<ModuleInteractionEvent>()
             .add_event::<StructureInteractionEvent>()
             .add_systems(OnEnter(GameState::BuildingStructures), setup_structures_from_file)
+            .add_systems(Update, (control_command_center_system).chain().run_if(in_state(GameState::InGame)))
+            .add_systems(FixedUpdate, move_structure_system.run_if(in_state(GameState::InGame)))
             .add_systems(
-                Update,
-                (
-                    detect_player_inside_structure_system,
-                    make_player_child_of_structure_system,
-                    control_command_center_system,
-                )
+                PostUpdate,
+                (detect_player_inside_structure_system, make_player_child_of_structure_system)
                     .chain()
+                    .after(PhysicsSet::Sync)
                     .run_if(in_state(GameState::InGame)),
-            )
-            .add_systems(FixedUpdate, move_structure_system.run_if(in_state(GameState::InGame)));
+            );
 
         if self.debug_enable {
             app.add_systems(
                 PostUpdate,
-                (debug_draw_structure_grid, debug_draw_player_inside_structure_rect, test)
+                (debug_draw_structure_grid, debug_draw_player_inside_structure_rect)
                     .after(PhysicsSet::Sync)
                     .chain()
                     .run_if(in_state(GameState::InGame)),
@@ -53,7 +51,7 @@ struct ControlledByPlayer {
 }
 
 #[derive(Component)]
-struct StructureSensor;
+struct StructureSensor(Entity);
 
 #[derive(Bundle)]
 struct StructureBundle {
@@ -247,7 +245,7 @@ fn setup_structures_from_file(
 
             commands.entity(structure_entity).with_children(|children| {
                 children.spawn((
-                    StructureSensor,
+                    StructureSensor(structure_entity),
                     Collider::rectangle(
                         grid_width * structure_component.grid.cell_size,
                         grid_height * structure_component.grid.cell_size,
@@ -290,31 +288,6 @@ pub enum ModuleInteractionEvent {
 pub enum StructureInteractionEvent {
     PlayerEntered { player_entity: Entity, structure_entity: Entity },
     PlayerExited { player_entity: Entity, structure_entity: Entity },
-}
-
-fn detect_player_inside_structure_system(
-    mut player_query: Query<(Entity, &GlobalTransform), With<Player>>,
-    mut structure_query: Query<(Entity, &Structure, &Transform)>,
-    mut event_writer: EventWriter<StructureInteractionEvent>,
-    mut player_resource: ResMut<PlayerResource>,
-) {
-    for (player_entity, player_transform) in &mut player_query {
-        for (structure_entity, structure, structure_transform) in &mut structure_query {
-            if structure.is_world_position_within_grid(player_transform.translation(), structure_transform) {
-                // Emit an event for the player entering the structure
-                if player_resource.inside_structure != Some(structure_entity) {
-                    player_resource.inside_structure = Some(structure_entity);
-                    event_writer.send(StructureInteractionEvent::PlayerEntered { player_entity, structure_entity });
-                }
-            } else {
-                // Emit an event for the player exiting the structure
-                if player_resource.inside_structure == Some(structure_entity) {
-                    player_resource.inside_structure = None;
-                    event_writer.send(StructureInteractionEvent::PlayerExited { player_entity, structure_entity });
-                }
-            }
-        }
-    }
 }
 
 // TODO: USE OBSERVER INSTEAD OF SYSTEM
@@ -369,7 +342,7 @@ fn control_command_center_system(
                                         module.entity_connected = Some(player_entity);
                                         debug!("Player is now controlling the Command Center.");
 
-                                        // lets insert the PlayerControlled component to the structure
+                                        // let's insert the PlayerControlled component to the structure
                                         command.entity(structure_entity).insert(ControlledByPlayer { player_entity });
 
                                         // Update the player resource to indicate that the player is controlling a structure
@@ -385,7 +358,7 @@ fn control_command_center_system(
                                         module.entity_connected = None;
                                         debug!("Player has released control of the Command Center.");
 
-                                        // lets remove the PlayerControlled component from the structure
+                                        // let's remove the PlayerControlled component from the structure
                                         command.entity(structure_entity).remove::<ControlledByPlayer>();
 
                                         // Update the player resource to indicate that the player is not controlling a structure
@@ -468,121 +441,86 @@ fn debug_draw_structure_grid(mut gizmos: Gizmos, structures_query: Query<(&Trans
                 gizmos.rect_2d(
                     cell_world_pos,
                     z_rotation,
-                    Vec2::splat(structure.grid.cell_size * 0.95), // Slightly smaller to leave gaps between cells
+                    Vec2::splat(structure.grid.cell_size * 0.95),
                     Color::from(GREY),
                 );
             }
         }
     }
 }
-fn test(
-    player_query: Query<(&Collider, &Position, &Transform), (With<Player>, Without<StructureSensor>)>,
-    structure_query: Query<(&Collider, &Position, &Transform), With<StructureSensor>>,
-) {
-    for (player_collider, player_position, player_t) in &player_query {
-        for (structure_collider, structure_position, structure_t) in &structure_query {
-            // The colliders are penetrating, so the distance is 0.0
-
-            match contact(
-                player_collider,
-                player_position.0,
-                player_t.rotation,
-                structure_collider,
-                structure_position.0,
-                structure_t.rotation,
-                0.0, // Prediction distance
-            ) {
-                Ok(Some(contact)) => {
-                    if (contact.penetration
-                        > player_collider.shape().0.compute_local_aabb().half_extents().x as f32
-                            + player_collider.shape().0.compute_local_aabb().half_extents().y as f32)
-                    {
-                        debug!("Contact: {:?}", contact);
-                    }
-                }
-                Ok(None) => {
-                    println!("No contact detected between player and structure.");
-                }
-                Err(err) => {
-                    println!("Unsupported collider shape: {:?}", err);
-                }
-            }
-        }
-    }
-}
-
-fn my_system(
-    player_query: Query<(Entity, &GlobalTransform), With<Player>>,
-    structure_query: Query<(Entity, &Children, &Structure, &Transform)>,
-    structure_sensor_query: Query<Entity, With<StructureSensor>>,
+fn detect_player_inside_structure_system(
+    player_query: Query<(Entity, &Collider, &Position, &Rotation), (With<Player>, Without<StructureSensor>)>,
+    structure_query: Query<(&Collider, &Position, &Rotation, &StructureSensor)>,
+    mut event_writer: EventWriter<StructureInteractionEvent>,
+    mut player_resource: ResMut<PlayerResource>,
     mut collision_event_reader: EventReader<Collision>,
 ) {
-    let (player_entity, player_transform) = player_query.single();
-
-    for (structure_entity, children, structure, structure_transform) in &structure_query {
-        let mut player_fully_inside = true;
-
-        // To iterate through the entities children, just treat the Children component as a Vec
-        // Alternatively, you could query entities that have a Parent component
-        for child in children {
-            if let Ok(mut structure_sensor_entity) = structure_sensor_query.get(*child) {
-                // Check collision events to analyze manifolds
-                for Collision(contacts) in collision_event_reader.read() {
-                    // Ensure the collision involves both the player and the structure
-                    if (contacts.entity1 == player_entity && contacts.entity2 == structure_sensor_entity)
-                        || (contacts.entity2 == player_entity && contacts.entity1 == structure_sensor_entity)
-                    {
-                        // Analyze each contact manifold
-                        for manifold in &contacts.manifolds {
-                            // Check each contact point in the manifold
-                            for contact in &manifold.contacts {
-                                // Depending on which entity is the player, use the appropriate point and normal
-                                let (contact_point, normal) = if player_entity == contacts.entity1 {
-                                    (contact.point1, contact.normal1)
-                                } else {
-                                    (contact.point2, contact.normal2)
-                                };
-
-                                // Compute the relative position from the contact point to the player's center
-                                let relative_position = player_transform.translation().truncate() - contact_point;
-                                debug!("Relative position: {:?}", relative_position);
-
-                                // If any normal points away from the player, the player isn't fully inside
-                                if normal.dot(relative_position) > 0.0 {
-                                    player_fully_inside = false;
-                                    break;
-                                }
-                            }
-
-                            // If the player is not fully inside, exit the manifold loop
-                            if !player_fully_inside {
-                                break;
-                            }
-                        }
-
-                        // If the player is fully inside the structure, draw the debug visualization
-                        if player_fully_inside {
-                            debug!("Player is fully inside the structure.");
-                        }
-                    }
+    for (player_entity, player_collider, player_position, player_r) in &player_query {
+        for (structure_collider, structure_position, structure_r, structure_sensor) in &structure_query {
+            for Collision(contacts) in collision_event_reader.read() {
+                if (contacts.is_sensor) {
+                    debug!("Sensor collision detected");
                 }
             }
         }
     }
 }
+
 fn debug_draw_player_inside_structure_rect(
     mut gizmos: Gizmos,
-    player_query: Query<(Entity, &GlobalTransform), With<Player>>,
-    structures_query: Query<(Entity, &Structure, &Transform, &CollidingEntities), With<StructureSensor>>,
-    mut collision_event_reader: EventReader<Collision>,
+    player_query: Query<(&GlobalTransform, &Player)>,
+    structures_query: Query<(&Transform, &Structure)>,
 ) {
-    // Iterate over colliding entities first
-    for (player_entity, player_transform) in &player_query {
-        for (structure_entity, structure, structure_transform, colliding_entities) in &structures_query {
-            // Check if the current player entity is colliding with this structure
-            if colliding_entities.0.contains(&player_entity) {
-                let mut player_fully_inside = true;
-                debug!("collision_event_reader: {:?}", collision_event_reader);
+    for (player_transform, _player) in &player_query {
+        let player_world_pos = player_transform.translation().truncate(); // Get player's 2D position
+
+        for (structure_transform, structure) in &structures_query {
+            let structure_world_pos = structure_transform.translation.truncate();
+            let z_rotation = structure_transform.rotation.to_euler(EulerRot::XYZ).2;
+
+            // Convert player's world position to the structure's local grid space
+            let local_player_pos = {
+                let translated_player_pos = player_world_pos - structure_world_pos;
+                let rotation_matrix = Mat2::from_angle(-z_rotation); // Inverse rotation
+                rotation_matrix * translated_player_pos
+            };
+
+            // Determine the player's grid cell
+            let cell_x = ((local_player_pos.x + (structure.grid.width as f32 * structure.grid.cell_size) / 2.0)
+                / structure.grid.cell_size)
+                .floor() as i32;
+
+            let cell_y = ((local_player_pos.y + (structure.grid.height as f32 * structure.grid.cell_size) / 2.0)
+                / structure.grid.cell_size)
+                .floor() as i32;
+
+            // Ensure the calculated cell position is within the grid boundaries
+            if cell_x >= 0
+                && cell_x < structure.grid.width as i32
+                && cell_y >= 0
+                && cell_y < structure.grid.height as i32
+            {
+                // Calculate the local position of the cell center
+                let cell_local_pos = Vec2::new(
+                    (cell_x as f32 - structure.grid.width as f32 / 2.0) * structure.grid.cell_size
+                        + structure.grid.cell_size / 2.0,
+                    (cell_y as f32 - structure.grid.height as f32 / 2.0) * structure.grid.cell_size
+                        + structure.grid.cell_size / 2.0,
+                );
+
+                // Apply rotation to the cell's local position
+                let rotated_cell_pos = Mat2::from_angle(z_rotation) * cell_local_pos;
+
+                // Calculate the final world position of the cell
+                let cell_world_pos = structure_world_pos + rotated_cell_pos;
+
+                // Draw the green rectangle inside the cell where the player is located
+                gizmos.rect_2d(
+                    cell_world_pos,
+                    z_rotation,
+                    Vec2::splat(structure.grid.cell_size * 0.95),
+                    Color::rgb(0.0, 1.0, 0.0), // Green color
+                );
             }
         }
     }

@@ -102,16 +102,46 @@ impl Structure {
         )
     }
 
-    // Convert the player's world position to grid coordinates relative to the structure
-    pub fn world_to_grid(&self, global_world_pos: Vec3, structure_transform: &Transform) -> (i32, i32) {
-        // Convert the world position to the structure's local space
-        let relative_pos = self.get_relative_position(global_world_pos, structure_transform);
+    /// Converts a world position into the grid coordinates of the structure.
+    fn world_to_grid(&self, world_pos: Vec3, structure_transform: &Transform) -> (i32, i32) {
+        let local_pos = self.world_to_local_grid_position(world_pos.truncate(), structure_transform);
 
-        // Adjust for the grid's origin
-        let adjusted_pos = self.adjust_for_grid_origin(relative_pos);
+        let grid_x =
+            ((local_pos.x + (self.grid.width as f32 * self.grid.cell_size) / 2.0) / self.grid.cell_size).floor() as i32;
 
-        // Convert the relative position to grid coordinates
-        self.grid.world_to_grid(adjusted_pos)
+        let grid_y = ((local_pos.y + (self.grid.height as f32 * self.grid.cell_size) / 2.0) / self.grid.cell_size)
+            .floor() as i32;
+
+        (grid_x, grid_y)
+    }
+
+    /// Converts a world position into the local grid space of the structure.
+    fn world_to_local_grid_position(&self, world_pos: Vec2, structure_transform: &Transform) -> Vec2 {
+        let structure_world_pos = structure_transform.translation.truncate();
+        let z_rotation = structure_transform.rotation.to_euler(EulerRot::XYZ).2;
+
+        // Translate and rotate the world position to local grid space
+        let translated_player_pos = world_pos - structure_world_pos;
+        let rotation_matrix = Mat2::from_angle(-z_rotation); // Inverse rotation
+        rotation_matrix * translated_player_pos
+    }
+
+    /// Given grid cell coordinates, returns the world position of the center of that cell.
+    fn grid_cell_center_world_position(&self, cell_x: i32, cell_y: i32, structure_transform: &Transform) -> Vec2 {
+        let structure_world_pos = structure_transform.translation.truncate();
+        let z_rotation = structure_transform.rotation.to_euler(EulerRot::XYZ).2;
+
+        // Calculate the local position of the cell center
+        let cell_local_pos = Vec2::new(
+            (cell_x as f32 - self.grid.width as f32 / 2.0) * self.grid.cell_size + self.grid.cell_size / 2.0,
+            (cell_y as f32 - self.grid.height as f32 / 2.0) * self.grid.cell_size + self.grid.cell_size / 2.0,
+        );
+
+        // Apply rotation to the cell's local position
+        let rotated_cell_pos = Mat2::from_angle(z_rotation) * cell_local_pos;
+
+        // Calculate the final world position of the cell
+        structure_world_pos + rotated_cell_pos
     }
 
     // Function to check if a raw world position is within the grid's bounds
@@ -415,32 +445,17 @@ fn move_structure_system(
 }
 
 fn debug_draw_structure_grid(mut gizmos: Gizmos, structures_query: Query<(&Transform, &Structure)>) {
-    for (transform, structure) in &structures_query {
-        // Get the position and rotation from the transform
-        let world_pos = transform.translation.truncate(); // Get the 2D position (x, y)
-        let z_rotation = transform.rotation.to_euler(EulerRot::XYZ).2; // Rotation in radians
-
+    for (structure_transform, structure) in &structures_query {
         // Iterate through each cell in the grid
         for y in 0..structure.grid.height {
             for x in 0..structure.grid.width {
-                // Calculate the local position of each cell relative to the center of the grid
-                let cell_local_pos = Vec2::new(
-                    (x as f32 - structure.grid.width as f32 / 2.0) * structure.grid.cell_size
-                        + structure.grid.cell_size / 2.0,
-                    (y as f32 - structure.grid.height as f32 / 2.0) * structure.grid.cell_size
-                        + structure.grid.cell_size / 2.0,
-                );
-
-                // Apply rotation to the cell's local position
-                let rotated_cell_pos = Mat2::from_angle(z_rotation) * cell_local_pos;
-
-                // Calculate the final world position of the cell
-                let cell_world_pos = world_pos + rotated_cell_pos;
+                // Get the world position of the cell's center
+                let cell_world_pos = structure.grid_cell_center_world_position(x as i32, y as i32, structure_transform);
 
                 // Draw the rectangle for the cell
                 gizmos.rect_2d(
                     cell_world_pos,
-                    z_rotation,
+                    structure_transform.rotation.to_euler(EulerRot::XYZ).2,
                     Vec2::splat(structure.grid.cell_size * 0.95),
                     Color::from(GREY),
                 );
@@ -459,7 +474,7 @@ fn detect_player_inside_structure_system(
         for (structure_collider, structure_position, structure_r, structure_sensor) in &structure_query {
             for Collision(contacts) in collision_event_reader.read() {
                 if (contacts.is_sensor) {
-                    debug!("Sensor collision detected");
+                    //debug!("Sensor collision detected");
                 }
             }
         }
@@ -475,49 +490,20 @@ fn debug_draw_player_inside_structure_rect(
         let player_world_pos = player_transform.translation().truncate(); // Get player's 2D position
 
         for (structure_transform, structure) in &structures_query {
-            let structure_world_pos = structure_transform.translation.truncate();
-            let z_rotation = structure_transform.rotation.to_euler(EulerRot::XYZ).2;
+            // Convert player's world position to the structure's grid coordinates
+            let (player_grid_x, player_grid_y) =
+                structure.world_to_grid(player_transform.translation(), structure_transform);
 
-            // Convert player's world position to the structure's local grid space
-            let local_player_pos = {
-                let translated_player_pos = player_world_pos - structure_world_pos;
-                let rotation_matrix = Mat2::from_angle(-z_rotation); // Inverse rotation
-                rotation_matrix * translated_player_pos
-            };
-
-            // Determine the player's grid cell
-            let cell_x = ((local_player_pos.x + (structure.grid.width as f32 * structure.grid.cell_size) / 2.0)
-                / structure.grid.cell_size)
-                .floor() as i32;
-
-            let cell_y = ((local_player_pos.y + (structure.grid.height as f32 * structure.grid.cell_size) / 2.0)
-                / structure.grid.cell_size)
-                .floor() as i32;
-
-            // Ensure the calculated cell position is within the grid boundaries
-            if cell_x >= 0
-                && cell_x < structure.grid.width as i32
-                && cell_y >= 0
-                && cell_y < structure.grid.height as i32
-            {
-                // Calculate the local position of the cell center
-                let cell_local_pos = Vec2::new(
-                    (cell_x as f32 - structure.grid.width as f32 / 2.0) * structure.grid.cell_size
-                        + structure.grid.cell_size / 2.0,
-                    (cell_y as f32 - structure.grid.height as f32 / 2.0) * structure.grid.cell_size
-                        + structure.grid.cell_size / 2.0,
-                );
-
-                // Apply rotation to the cell's local position
-                let rotated_cell_pos = Mat2::from_angle(z_rotation) * cell_local_pos;
-
-                // Calculate the final world position of the cell
-                let cell_world_pos = structure_world_pos + rotated_cell_pos;
+            // Check if the player's grid coordinates are within the grid's bounds
+            if structure.is_within_grid_bounds(player_grid_x, player_grid_y) {
+                // Get the world position of the cell's center where the player is located
+                let cell_world_pos =
+                    structure.grid_cell_center_world_position(player_grid_x, player_grid_y, structure_transform);
 
                 // Draw the green rectangle inside the cell where the player is located
                 gizmos.rect_2d(
                     cell_world_pos,
-                    z_rotation,
+                    structure_transform.rotation.to_euler(EulerRot::XYZ).2,
                     Vec2::splat(structure.grid.cell_size * 0.95),
                     Color::rgb(0.0, 1.0, 0.0), // Green color
                 );

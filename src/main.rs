@@ -41,7 +41,7 @@ fn main() {
                     primary_window: Some(Window {
                         title: "My Game Window".into(),
                         name: Some("bevy.app".into()),
-                        resolution: (1300., 800.).into(),
+                        resolution: (1800., 900.).into(),
                         present_mode: PresentMode::Immediate,
                         ..default()
                     }),

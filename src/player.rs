@@ -45,6 +45,8 @@ fn spawn_player(
         .spawn((
             RigidBody::Dynamic,
             Collider::circle(10.0),
+            ColliderDensity(0.0),
+            Mass(1000.0),
             Player,
             MaterialMesh2dBundle {
                 mesh: meshes.add(Circle { radius: 10.0 }).into(),

@@ -444,6 +444,38 @@ fn move_structure_system(
     }
 }
 
+fn detect_player_inside_structure_system(
+    player_query: Query<(Entity, &GlobalTransform, &Player)>,
+    structures_query: Query<(Entity, &Transform, &Structure)>,
+    mut event_writer: EventWriter<StructureInteractionEvent>,
+    mut player_resource: ResMut<PlayerResource>,
+) {
+    for (player_entity, player_transform, _player) in &player_query {
+        let player_world_pos = player_transform.translation().truncate();
+
+        for (structure_entity, structure_transform, structure) in &structures_query {
+            // Convert player's world position to the structure's grid coordinates
+            let (player_grid_x, player_grid_y) =
+                structure.world_to_grid(player_transform.translation(), structure_transform);
+
+            // Check if the player's grid coordinates are within the grid's bounds
+            if structure.is_within_grid_bounds(player_grid_x, player_grid_y) {
+                // Emit an event to indicate that the player is inside the structure only if the player is not already inside
+                if player_resource.inside_structure != Some(structure_entity) {
+                    player_resource.inside_structure = Some(structure_entity);
+                    event_writer.send(StructureInteractionEvent::PlayerEntered { player_entity, structure_entity });
+                }
+            } else {
+                // Emit an event to indicate that the player has exited the structure only if the player was inside
+                if player_resource.inside_structure == Some(structure_entity) {
+                    player_resource.inside_structure = None;
+                    event_writer.send(StructureInteractionEvent::PlayerExited { player_entity, structure_entity });
+                }
+            }
+        }
+    }
+}
+
 fn debug_draw_structure_grid(mut gizmos: Gizmos, structures_query: Query<(&Transform, &Structure)>) {
     for (structure_transform, structure) in &structures_query {
         // Iterate through each cell in the grid
@@ -463,23 +495,6 @@ fn debug_draw_structure_grid(mut gizmos: Gizmos, structures_query: Query<(&Trans
         }
     }
 }
-fn detect_player_inside_structure_system(
-    player_query: Query<(Entity, &Collider, &Position, &Rotation), (With<Player>, Without<StructureSensor>)>,
-    structure_query: Query<(&Collider, &Position, &Rotation, &StructureSensor)>,
-    mut event_writer: EventWriter<StructureInteractionEvent>,
-    mut player_resource: ResMut<PlayerResource>,
-    mut collision_event_reader: EventReader<Collision>,
-) {
-    for (player_entity, player_collider, player_position, player_r) in &player_query {
-        for (structure_collider, structure_position, structure_r, structure_sensor) in &structure_query {
-            for Collision(contacts) in collision_event_reader.read() {
-                if (contacts.is_sensor) {
-                    //debug!("Sensor collision detected");
-                }
-            }
-        }
-    }
-}
 
 fn debug_draw_player_inside_structure_rect(
     mut gizmos: Gizmos,
@@ -487,7 +502,7 @@ fn debug_draw_player_inside_structure_rect(
     structures_query: Query<(&Transform, &Structure)>,
 ) {
     for (player_transform, _player) in &player_query {
-        let player_world_pos = player_transform.translation().truncate(); // Get player's 2D position
+        let player_world_pos = player_transform.translation().truncate();
 
         for (structure_transform, structure) in &structures_query {
             // Convert player's world position to the structure's grid coordinates

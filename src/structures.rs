@@ -109,7 +109,8 @@ impl Structure {
         let grid_x =
             ((local_pos.x + (self.grid.width as f32 * self.grid.cell_size) / 2.0) / self.grid.cell_size).floor() as i32;
 
-        let grid_y = ((local_pos.y + (self.grid.height as f32 * self.grid.cell_size) / 2.0) / self.grid.cell_size)
+        // Notice here that we negate the local Y position to flip the Y axis
+        let grid_y = (((self.grid.height as f32 * self.grid.cell_size) / 2.0 - local_pos.y) / self.grid.cell_size)
             .floor() as i32;
 
         (grid_x, grid_y)
@@ -131,10 +132,10 @@ impl Structure {
         let structure_world_pos = structure_transform.translation.truncate();
         let z_rotation = structure_transform.rotation.to_euler(EulerRot::XYZ).2;
 
-        // Calculate the local position of the cell center
+        // Calculate the local position of the cell center, taking the flipped y-axis into account
         let cell_local_pos = Vec2::new(
             (cell_x as f32 - self.grid.width as f32 / 2.0) * self.grid.cell_size + self.grid.cell_size / 2.0,
-            (cell_y as f32 - self.grid.height as f32 / 2.0) * self.grid.cell_size + self.grid.cell_size / 2.0,
+            -((cell_y as f32 - self.grid.height as f32 / 2.0) * self.grid.cell_size + self.grid.cell_size / 2.0),
         );
 
         // Apply rotation to the cell's local position
@@ -263,13 +264,11 @@ fn setup_structures_from_file(
                                 mesh_scale_factor,
                                 true,
                             );
-
-                            debug!("Command Center at ({}, {})", y, x);
                         }
                         _ => continue, // Skip characters that don't correspond to a module
                     };
 
-                    structure_component.grid.insert(y as i32, x as i32);
+                    structure_component.grid.insert(x as i32, y as i32);
                 }
             }
 
@@ -368,6 +367,8 @@ fn control_command_center_system(
                             for event in event_reader.read() {
                                 if let InputAction::SpacePressed = event {
                                     if module.entity_connected.is_none() {
+                                        *player_velocity = LinearVelocity::ZERO; // Stop the player's movement
+
                                         // Take control if no one is controlling it
                                         module.entity_connected = Some(player_entity);
                                         debug!("Player is now controlling the Command Center.");
@@ -413,9 +414,11 @@ fn control_command_center_system(
 }
 
 fn move_structure_system(
-    mut controlled_structure_query: Query<(Entity, &mut LinearVelocity, &ControlledByPlayer), With<Structure>>,
-    mut player_query: Query<(Entity, &mut LinearVelocity), (With<Player>, Without<Structure>)>,
-    mut modules: Query<&mut LinearVelocity, (With<Module>, Without<Structure>, Without<Player>)>,
+    mut controlled_structure_query: Query<
+        (&mut LinearVelocity, &AngularVelocity, &ControlledByPlayer),
+        With<Structure>,
+    >,
+    mut player_query: Query<(&mut LinearVelocity, &mut AngularVelocity), (With<Player>, Without<Structure>)>,
     player_resource: ResMut<PlayerResource>,
     mut input_reader: EventReader<InputAction>,
     time: Res<Time>,
@@ -423,9 +426,9 @@ fn move_structure_system(
     if player_resource.is_controlling_structure {
         let delta_time = time.delta_seconds();
         // Get structure controlled by player should be unique
-        let (structure_entity, mut structure_velocity, controlled_by) = controlled_structure_query.single_mut();
+        let (mut structure_velocity, structure_angular_v, controlled_by) = controlled_structure_query.single_mut();
 
-        if let Ok((player_entity, mut player_velocity)) = player_query.get_mut(controlled_by.player_entity) {
+        if let Ok((mut player_velocity, mut player_angular_vel)) = player_query.get_mut(controlled_by.player_entity) {
             for event in input_reader.read() {
                 match event {
                     InputAction::Move(direction) => {
@@ -436,10 +439,7 @@ fn move_structure_system(
                 }
             }
             *player_velocity = structure_velocity.clone();
-
-            /* for (mut module_velocity) in &mut modules {
-                *module_velocity = structure_velocity.clone();
-            } */
+            *player_angular_vel = structure_angular_v.clone();
         }
     }
 }

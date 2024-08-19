@@ -4,7 +4,6 @@ use crate::inputs::InputAction;
 use crate::modules::{spawn_module, Module, ModuleType};
 use crate::player::{Player, PlayerResource};
 use crate::state::GameState;
-use avian2d::math::Vector;
 use avian2d::prelude::*;
 use bevy::app::{App, Plugin, Update};
 use bevy::color::palettes::css::*;
@@ -22,10 +21,6 @@ impl Plugin for StructuresPlugin {
             .add_event::<StructureInteractionEvent>()
             .add_systems(OnEnter(GameState::BuildingStructures), setup_structures_from_file)
             .add_systems(Update, (control_command_center_system).chain().run_if(in_state(GameState::InGame)))
-            .add_systems(
-                FixedUpdate,
-                (move_structure_system, break_structure_system).run_if(in_state(GameState::InGame)),
-            )
             .add_systems(
                 PostUpdate,
                 (detect_player_inside_structure_system, make_player_child_of_structure_system)
@@ -47,8 +42,8 @@ impl Plugin for StructuresPlugin {
 }
 
 #[derive(Component)]
-struct ControlledByPlayer {
-    player_entity: Entity,
+pub(crate) struct ControlledByPlayer {
+    pub(crate) player_entity: Entity,
 }
 
 #[derive(Component)]
@@ -353,75 +348,6 @@ fn control_command_center_system(
                     }
                 }
             }
-        }
-    }
-}
-
-fn break_structure_system(
-    mut controlled_structure_query: Query<&mut LinearVelocity, With<ControlledByPlayer>>,
-    mut input_reader: EventReader<InputAction>,
-    time: Res<Time>,
-) {
-    let delta_time = time.delta_seconds();
-    let deceleration_factor = 20.0; // This value controls how quickly the player slows down
-
-    for event in input_reader.read() {
-        for (mut velocity) in &mut controlled_structure_query {
-            match event {
-                InputAction::Break() => {
-                    // Apply deceleration in the opposite direction of the current velocity
-                    let mut velocity_vector = velocity.0;
-
-                    // Check if velocity is non-zero to avoid unnecessary calculations
-                    if velocity_vector.length_squared() > 0.0 {
-                        // Calculate the deceleration to apply
-                        let deceleration = -velocity_vector.normalize() * deceleration_factor * delta_time;
-
-                        // Apply deceleration to the velocity
-                        velocity_vector += deceleration;
-
-                        // Prevent overshooting: Stop the player if velocity is close to zero
-                        if velocity_vector.length_squared() < (deceleration_factor * delta_time).powi(2) {
-                            velocity_vector = Vector::ZERO;
-                        }
-
-                        // Update the player's velocity
-                        velocity.0 = velocity_vector;
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-}
-
-fn move_structure_system(
-    mut controlled_structure_query: Query<
-        (&mut LinearVelocity, &AngularVelocity, &ControlledByPlayer),
-        With<Structure>,
-    >,
-    mut player_query: Query<(&mut LinearVelocity, &mut AngularVelocity), (With<Player>, Without<Structure>)>,
-    player_resource: ResMut<PlayerResource>,
-    mut input_reader: EventReader<InputAction>,
-    time: Res<Time>,
-) {
-    if player_resource.is_controlling_structure {
-        let delta_time = time.delta_seconds();
-        // Get structure controlled by player should be unique
-        let (mut structure_velocity, structure_angular_v, controlled_by) = controlled_structure_query.single_mut();
-
-        if let Ok((mut player_velocity, mut player_angular_vel)) = player_query.get_mut(controlled_by.player_entity) {
-            for event in input_reader.read() {
-                match event {
-                    InputAction::Move(direction) => {
-                        structure_velocity.x += direction.x * 100.0 * delta_time;
-                        structure_velocity.y += direction.y * 100.0 * delta_time;
-                    }
-                    _ => {}
-                }
-            }
-            *player_velocity = structure_velocity.clone();
-            *player_angular_vel = structure_angular_v.clone();
         }
     }
 }

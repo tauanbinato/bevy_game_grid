@@ -8,16 +8,19 @@ mod debug;
 mod grid;
 mod inputs;
 mod modules;
+mod movement;
 mod ore;
 mod player;
 mod schedule;
 mod state;
 mod structures;
+mod utils;
 
 use asset_loader::AssetLoaderPlugin;
 use debug::DebugPlugin;
 use grid::GridPlugin;
 use inputs::InputsPlugin;
+use movement::MovementPlugin;
 use ore::OrePlugin;
 use player::PlayerPlugin;
 use schedule::SchedulePlugin;
@@ -58,6 +61,7 @@ fn main() {
             GridPlugin { debug_enable: true },
             InputsPlugin,
             PlayerPlugin,
+            MovementPlugin,
             StructuresPlugin { debug_enable: true },
             OrePlugin,
             DebugPlugin { enable: true },

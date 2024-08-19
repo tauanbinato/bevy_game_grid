@@ -1,7 +1,6 @@
 use crate::grid::Grid;
 use avian2d::prelude::*;
 use bevy::prelude::*;
-use bevy::prelude::*;
 use bevy::sprite::MaterialMesh2dBundle;
 
 pub struct OrePlugin;

@@ -1,5 +1,5 @@
 use crate::asset_loader::{AssetBlob, AssetStore, Level};
-use crate::player::{Player, PlayerGridPosition};
+use crate::player::{Player, PlayerResource};
 use crate::state::GameState;
 use avian2d::collision::Collider;
 use avian2d::prelude::{LinearVelocity, RigidBody};
@@ -225,11 +225,11 @@ fn debug_draw_grid(mut gizmos: Gizmos, grid: Res<Grid>) {
         .outer_edges();
 }
 
-fn debug_draw_rects(mut gizmos: Gizmos, grid: Res<Grid>, query: Query<&Transform, With<Player>>) {
+fn debug_draw_rects(mut gizmos: Gizmos, grid: Res<Grid>, query: Query<&GlobalTransform, With<Player>>) {
     let square_size = grid.cell_size * 0.95; // Adjust this value to control the size of the square
 
     for transform in &query {
-        let (grid_x, grid_y) = grid.world_to_grid(transform.translation);
+        let (grid_x, grid_y) = grid.world_to_grid(transform.translation());
 
         // Draw a red rectangle at the player's current grid position
         let world_pos = grid.grid_to_world((grid_x, grid_y));
@@ -245,13 +245,13 @@ pub struct PlayerGridChangeEvent {
 }
 
 fn detect_grid_updates(
-    query: Query<(Entity, &Transform), With<Player>>,
+    query: Query<(Entity, &GlobalTransform), With<Player>>,
     mut grid: ResMut<Grid>,
     mut event_writer: EventWriter<PlayerGridChangeEvent>,
-    mut player_grid_position: ResMut<PlayerGridPosition>,
+    mut player_grid_position: ResMut<PlayerResource>,
 ) {
     for (entity, transform) in &query {
-        let (updated_grid_x, updated_grid_y) = grid.world_to_grid(transform.translation);
+        let (updated_grid_x, updated_grid_y) = grid.world_to_grid(transform.translation());
         let (old_grid_x, old_grid_y) = player_grid_position.grid_position;
 
         if (old_grid_x, old_grid_y) != (updated_grid_x, updated_grid_y) {
@@ -270,11 +270,11 @@ fn detect_grid_updates(
         }
     }
 }
-fn apply_gravity(mut query: Query<(&Transform, &mut LinearVelocity)>, grid: Res<Grid>) {
+fn apply_gravity(mut query: Query<(&GlobalTransform, &mut LinearVelocity)>, grid: Res<Grid>) {
     let damping_factor: f32 = 0.95; // Adjust this value to control the damping effect
 
     for (transform, mut velocity) in &mut query {
-        let (grid_x, grid_y) = grid.world_to_grid(transform.translation);
+        let (grid_x, grid_y) = grid.world_to_grid(transform.translation());
         if let Some(cell) = grid.get(grid_x, grid_y) {
             let gravity = match cell.properties.environment {
                 EnvironmentType::OuterSpace { gravity } => gravity,

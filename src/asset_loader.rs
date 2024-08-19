@@ -1,12 +1,11 @@
+use crate::state::GameState;
 use bevy::{
     asset::{io::Reader, AssetLoader, AsyncReadExt, LoadContext},
     prelude::*,
     reflect::TypePath,
 };
-use bevy::asset::ron;
 use serde::Deserialize;
 use thiserror::Error;
-use crate::state::GameState;
 
 #[derive(Debug, Deserialize)]
 pub struct Level {
@@ -73,7 +72,6 @@ impl Plugin for AssetLoaderPlugin {
 }
 
 fn setup(mut state: ResMut<AssetStore>, asset_server: Res<AssetServer>) {
-
     // Will use BlobAssetLoader instead of CustomAssetLoader thanks to type inference
     state.level_blob = asset_server.load("data/level.json");
 
@@ -83,7 +81,7 @@ fn setup(mut state: ResMut<AssetStore>, asset_server: Res<AssetServer>) {
 fn print_on_load(
     state: ResMut<AssetStore>,
     blob_assets: Res<Assets<AssetBlob>>,
-    mut next_state: ResMut<NextState<GameState>>
+    mut next_state: ResMut<NextState<GameState>>,
 ) {
     let level_blob = blob_assets.get(&state.level_blob);
     let structures_blob = blob_assets.get(&state.structures_blob);
@@ -96,5 +94,4 @@ fn print_on_load(
     info!("Structures Blob Loaded, Size: {:?} Bytes", structures_blob.unwrap().bytes.len());
 
     next_state.set(GameState::BuildingGrid);
-
 }

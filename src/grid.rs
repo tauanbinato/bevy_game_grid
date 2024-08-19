@@ -2,7 +2,7 @@ use crate::asset_loader::{AssetBlob, AssetStore, Level};
 use crate::player::{Player, PlayerResource};
 use crate::state::GameState;
 use avian2d::collision::Collider;
-use avian2d::prelude::{ColliderDensity, Inertia, LinearVelocity, Mass, RigidBody};
+use avian2d::prelude::{LinearVelocity, RigidBody};
 use bevy::prelude::*;
 use bevy::{color::palettes::css::*, sprite::MaterialMesh2dBundle};
 use std::collections::HashMap;

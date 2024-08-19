@@ -2,16 +2,14 @@ use crate::asset_loader::{AssetBlob, AssetStore, StructuresData};
 use crate::grid::Grid;
 use crate::inputs::InputAction;
 use crate::modules::{spawn_module, Module, ModuleType};
-use crate::player::{self, Player, PlayerResource};
+use crate::player::{Player, PlayerResource};
 use crate::state::GameState;
-use avian2d::math::{Quaternion, PI};
-use avian2d::parry::query::closest_points;
+use avian2d::math::Vector;
 use avian2d::prelude::*;
 use bevy::app::{App, Plugin, Update};
 use bevy::color::palettes::css::*;
 use bevy::math::Vec3;
 use bevy::prelude::*;
-use std::process::Command;
 
 #[derive(Default)]
 pub struct StructuresPlugin {
@@ -24,7 +22,10 @@ impl Plugin for StructuresPlugin {
             .add_event::<StructureInteractionEvent>()
             .add_systems(OnEnter(GameState::BuildingStructures), setup_structures_from_file)
             .add_systems(Update, (control_command_center_system).chain().run_if(in_state(GameState::InGame)))
-            .add_systems(FixedUpdate, move_structure_system.run_if(in_state(GameState::InGame)))
+            .add_systems(
+                FixedUpdate,
+                (move_structure_system, break_structure_system).run_if(in_state(GameState::InGame)),
+            )
             .add_systems(
                 PostUpdate,
                 (detect_player_inside_structure_system, make_player_child_of_structure_system)
@@ -73,38 +74,9 @@ impl Structure {
         Structure { grid: Default::default() }
     }
 
-    pub fn is_global_position_inside_structure(&self, global_pos: Vec3, structure_transform: &Transform) -> bool {
-        // Get the structure's center position
-        let center_pos = structure_transform.translation;
-
-        // Calculate the half extents of the structure
-        let half_width = self.grid.width as f32 * self.grid.cell_size / 2.0;
-        let half_height = self.grid.height as f32 * self.grid.cell_size / 2.0;
-
-        // Check if the global position is within the bounds of the structure
-        global_pos.x >= center_pos.x - half_width
-            && global_pos.x <= center_pos.x + half_width
-            && global_pos.y >= center_pos.y - half_height
-            && global_pos.y <= center_pos.y + half_height
-    }
-
-    // Convert the player's world position to a position relative to the structure's grid
-    pub fn get_relative_position(&self, some_world_pos: Vec3, structure_transform: &Transform) -> Vec3 {
-        some_world_pos - structure_transform.translation
-    }
-
-    // Adjust a position for the grid's origin by shifting by half a cell size
-    pub fn adjust_for_grid_origin(&self, relative_pos: Vec3) -> Vec3 {
-        Vec3::new(
-            relative_pos.x + (self.grid.cell_size / 2.0),
-            relative_pos.y - (self.grid.cell_size / 2.0),
-            relative_pos.z,
-        )
-    }
-
     /// Converts a world position into the grid coordinates of the structure.
     fn world_to_grid(&self, world_pos: Vec3, structure_transform: &Transform) -> (i32, i32) {
-        let local_pos = self.world_to_local_grid_position(world_pos.truncate(), structure_transform);
+        let local_pos = Structure::world_to_local_grid_position(world_pos.truncate(), structure_transform);
 
         let grid_x =
             ((local_pos.x + (self.grid.width as f32 * self.grid.cell_size) / 2.0) / self.grid.cell_size).floor() as i32;
@@ -117,7 +89,7 @@ impl Structure {
     }
 
     /// Converts a world position into the local grid space of the structure.
-    fn world_to_local_grid_position(&self, world_pos: Vec2, structure_transform: &Transform) -> Vec2 {
+    fn world_to_local_grid_position(world_pos: Vec2, structure_transform: &Transform) -> Vec2 {
         let structure_world_pos = structure_transform.translation.truncate();
         let z_rotation = structure_transform.rotation.to_euler(EulerRot::XYZ).2;
 
@@ -145,37 +117,9 @@ impl Structure {
         structure_world_pos + rotated_cell_pos
     }
 
-    // Function to check if a raw world position is within the grid's bounds
-    pub fn is_world_position_within_grid(&self, global_world_pos: Vec3, structure_transform: &Transform) -> bool {
-        // Convert the world position to the structure's local space
-        let relative_pos = self.get_relative_position(global_world_pos, structure_transform);
-
-        // Adjust for the grid's origin
-        let adjusted_pos = self.adjust_for_grid_origin(relative_pos);
-
-        // Convert the adjusted position to grid coordinates
-        let (grid_x, grid_y) = self.grid.world_to_grid(adjusted_pos);
-
-        // Check if these coordinates are within the grid's bounds
-        self.is_within_grid_bounds(grid_x, grid_y)
-    }
-
-    // Check if some grid coordinates are within the grid's bounds
+    /// Checks if the given grid coordinates are within the bounds of the structure's grid.
     pub fn is_within_grid_bounds(&self, grid_x: i32, grid_y: i32) -> bool {
         grid_x >= 0 && grid_x < self.grid.width as i32 && grid_y >= 0 && grid_y < self.grid.height as i32
-    }
-
-    // Convert grid coordinates back to world coordinates and apply structure's translation
-    pub fn grid_to_world_position(&self, grid_pos: (i32, i32), structure_transform: &Transform) -> Vec3 {
-        let half_width = self.grid.width as f32 * self.grid.cell_size / 2.0;
-        let half_height = self.grid.height as f32 * self.grid.cell_size / 2.0;
-
-        // Adjust the position by the structure's transform and center it within the cell
-        Vec3::new(
-            grid_pos.0 as f32 * self.grid.cell_size - half_width,
-            half_height - grid_pos.1 as f32 * self.grid.cell_size, // Adjusted for top-left origin
-            structure_transform.translation.z,                     // Preserve the Z position
-        ) + structure_transform.translation
     }
 }
 
@@ -413,6 +357,44 @@ fn control_command_center_system(
     }
 }
 
+fn break_structure_system(
+    mut controlled_structure_query: Query<&mut LinearVelocity, With<ControlledByPlayer>>,
+    mut input_reader: EventReader<InputAction>,
+    time: Res<Time>,
+) {
+    let delta_time = time.delta_seconds();
+    let deceleration_factor = 20.0; // This value controls how quickly the player slows down
+
+    for event in input_reader.read() {
+        for (mut velocity) in &mut controlled_structure_query {
+            match event {
+                InputAction::Break() => {
+                    // Apply deceleration in the opposite direction of the current velocity
+                    let mut velocity_vector = velocity.0;
+
+                    // Check if velocity is non-zero to avoid unnecessary calculations
+                    if velocity_vector.length_squared() > 0.0 {
+                        // Calculate the deceleration to apply
+                        let deceleration = -velocity_vector.normalize() * deceleration_factor * delta_time;
+
+                        // Apply deceleration to the velocity
+                        velocity_vector += deceleration;
+
+                        // Prevent overshooting: Stop the player if velocity is close to zero
+                        if velocity_vector.length_squared() < (deceleration_factor * delta_time).powi(2) {
+                            velocity_vector = Vector::ZERO;
+                        }
+
+                        // Update the player's velocity
+                        velocity.0 = velocity_vector;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
 fn move_structure_system(
     mut controlled_structure_query: Query<
         (&mut LinearVelocity, &AngularVelocity, &ControlledByPlayer),
@@ -451,8 +433,6 @@ fn detect_player_inside_structure_system(
     mut player_resource: ResMut<PlayerResource>,
 ) {
     for (player_entity, player_transform, _player) in &player_query {
-        let player_world_pos = player_transform.translation().truncate();
-
         for (structure_entity, structure_transform, structure) in &structures_query {
             // Convert player's world position to the structure's grid coordinates
             let (player_grid_x, player_grid_y) =
@@ -502,8 +482,6 @@ fn debug_draw_player_inside_structure_rect(
     structures_query: Query<(&Transform, &Structure)>,
 ) {
     for (player_transform, _player) in &player_query {
-        let player_world_pos = player_transform.translation().truncate();
-
         for (structure_transform, structure) in &structures_query {
             // Convert player's world position to the structure's grid coordinates
             let (player_grid_x, player_grid_y) =
@@ -520,7 +498,7 @@ fn debug_draw_player_inside_structure_rect(
                     cell_world_pos,
                     structure_transform.rotation.to_euler(EulerRot::XYZ).2,
                     Vec2::splat(structure.grid.cell_size * 0.95),
-                    Color::rgb(0.0, 1.0, 0.0), // Green color
+                    Color::srgb(0.0, 1.0, 0.0), // Green color
                 );
             }
         }

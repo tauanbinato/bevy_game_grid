@@ -1,5 +1,3 @@
-use std::fmt::Display;
-
 use avian2d::prelude::*;
 use bevy::asset::Assets;
 use bevy::color::Color;

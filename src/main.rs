@@ -3,7 +3,6 @@ use bevy::app::PluginGroupBuilder;
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use bevy::window::PresentMode;
-use bevy_inspector_egui::quick::WorldInspectorPlugin;
 mod asset_loader;
 mod debug;
 mod grid;

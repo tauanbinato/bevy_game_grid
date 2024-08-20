@@ -1,5 +1,5 @@
 use crate::asset_loader::{AssetBlob, AssetStore, StructuresData};
-use crate::grid::Grid;
+use crate::grid::{CellType, Grid};
 use crate::inputs::InputAction;
 use crate::modules::{spawn_module, Module, ModuleType};
 use crate::player::{Player, PlayerResource};
@@ -9,6 +9,8 @@ use bevy::app::{App, Plugin, Update};
 use bevy::color::palettes::css::*;
 use bevy::math::Vec3;
 use bevy::prelude::*;
+use log::debug;
+use std::collections::{HashSet, VecDeque};
 
 #[derive(Default)]
 pub struct StructuresPlugin {
@@ -20,7 +22,10 @@ impl Plugin for StructuresPlugin {
         app.add_event::<ModuleInteractionEvent>()
             .add_event::<StructureInteractionEvent>()
             .add_systems(OnEnter(GameState::BuildingStructures), setup_structures_from_file)
-            .add_systems(Update, (control_command_center_system).chain().run_if(in_state(GameState::InGame)))
+            .add_systems(
+                Update,
+                (control_command_center_system, update_pressurization_system).run_if(in_state(GameState::InGame)),
+            )
             .add_systems(
                 PostUpdate,
                 (detect_player_inside_structure_system, make_player_child_of_structure_system)
@@ -61,7 +66,7 @@ struct StructureBundle {
 
 #[derive(Component, Debug)]
 pub struct Structure {
-    grid: Grid,
+    pub grid: Grid,
 }
 
 impl Structure {
@@ -116,6 +121,56 @@ impl Structure {
     pub fn is_within_grid_bounds(&self, grid_x: i32, grid_y: i32) -> bool {
         grid_x >= 0 && grid_x < self.grid.width as i32 && grid_y >= 0 && grid_y < self.grid.height as i32
     }
+
+    pub fn check_pressurization(&self) -> HashSet<(i32, i32)> {
+        let mut visited = HashSet::new();
+        let mut queue = VecDeque::new();
+
+        // Start flood fill from all cells on the boundary that are not modules
+        for x in 0..self.grid.width as i32 {
+            for y in &[0, self.grid.height as i32 - 1] {
+                if let Some(cell) = self.grid.get(x, *y) {
+                    if cell.cell_type != CellType::Module {
+                        queue.push_back((x, *y));
+                    }
+                }
+            }
+        }
+
+        for y in 0..self.grid.height as i32 {
+            for x in &[0, self.grid.width as i32 - 1] {
+                if let Some(cell) = self.grid.get(*x, y) {
+                    if cell.cell_type != CellType::Module {
+                        queue.push_back((*x, y));
+                    }
+                }
+            }
+        }
+
+        // Perform flood fill
+        while let Some((x, y)) = queue.pop_front() {
+            if visited.contains(&(x, y)) {
+                continue;
+            }
+
+            visited.insert((x, y));
+
+            for (dx, dy) in &[(-1, 0), (1, 0), (0, -1), (0, 1)] {
+                let nx = x + dx;
+                let ny = y + dy;
+
+                if self.is_within_grid_bounds(nx, ny) {
+                    if let Some(cell) = self.grid.get(nx, ny) {
+                        if cell.cell_type != CellType::Module && !visited.contains(&(nx, ny)) {
+                            queue.push_back((nx, ny));
+                        }
+                    }
+                }
+            }
+        }
+
+        visited
+    }
 }
 
 fn setup_structures_from_file(
@@ -163,13 +218,13 @@ fn setup_structures_from_file(
                             spawn_module(
                                 &mut commands,
                                 structure_entity,
+                                &mut structure_component,
                                 &mut materials,
                                 &mut meshes,
                                 ModuleType::Engine,
                                 Color::from(RED),
                                 (x as i32, y as i32),
                                 Vec3::new(x_translation, y_translation, 1.0),
-                                structure_component.grid.cell_size,
                                 mesh_scale_factor,
                                 false,
                             );
@@ -178,13 +233,13 @@ fn setup_structures_from_file(
                             spawn_module(
                                 &mut commands,
                                 structure_entity,
+                                &mut structure_component,
                                 &mut materials,
                                 &mut meshes,
                                 ModuleType::Wall,
                                 Color::from(GREY),
                                 (x as i32, y as i32),
                                 Vec3::new(x_translation, y_translation, 1.0),
-                                structure_component.grid.cell_size,
                                 mesh_scale_factor,
                                 false,
                             );
@@ -193,21 +248,19 @@ fn setup_structures_from_file(
                             spawn_module(
                                 &mut commands,
                                 structure_entity,
+                                &mut structure_component,
                                 &mut materials,
                                 &mut meshes,
                                 ModuleType::CommandCenter,
                                 Color::from(BLUE),
                                 (x as i32, y as i32),
                                 Vec3::new(x_translation, y_translation, -1.0),
-                                structure_component.grid.cell_size,
                                 mesh_scale_factor,
                                 true,
                             );
                         }
                         _ => continue, // Skip characters that don't correspond to a module
                     };
-
-                    structure_component.grid.insert(x as i32, y as i32);
                 }
             }
 
@@ -272,6 +325,46 @@ fn make_player_child_of_structure_system(
             StructureInteractionEvent::PlayerExited { player_entity, structure_entity: _ } => {
                 command.entity(*player_entity).remove_parent_in_place();
                 debug!("Player is no longer a child of the structure.");
+            }
+        }
+    }
+}
+
+fn update_pressurization_system(mut gizmos: Gizmos, query: Query<(&Transform, &Structure)>) {
+    for (structure_transform, structure) in query.iter() {
+        let grid = &structure.grid;
+        let exposed_cells = structure.check_pressurization();
+
+        // Iterate over all cells in the grid
+        for y in 0..grid.height as i32 {
+            for x in 0..grid.width as i32 {
+                // Get the cell and check its type
+                if let Some(cell) = grid.get(x, y) {
+                    // Skip drawing if the cell is a Wall or a Module
+                    if matches!(cell.cell_type, CellType::Module) {
+                        continue;
+                    }
+
+                    let is_pressurized = !exposed_cells.contains(&(x, y));
+
+                    // Determine the cell color based on pressurization status
+                    let color = if is_pressurized {
+                        Color::rgb(0.0, 1.0, 0.0) // Green for pressurized
+                    } else {
+                        Color::rgb(1.0, 0.0, 0.0) // Red for unpressurized
+                    };
+
+                    // Calculate the world position of the cell's center
+                    let cell_world_pos = structure.grid_cell_center_world_position(x, y, structure_transform);
+
+                    // Draw the rectangle for the cell
+                    gizmos.rect_2d(
+                        cell_world_pos,
+                        structure_transform.rotation.to_euler(EulerRot::XYZ).2,
+                        Vec2::splat(grid.cell_size * 0.70), // Slightly smaller to avoid overlapping
+                        color,
+                    );
+                }
             }
         }
     }

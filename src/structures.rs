@@ -189,8 +189,8 @@ fn setup_structures_from_file(
         for structure_data in structures.structures {
             let mut structure_component = Structure::new();
 
-            let grid_width = structure_data[0].len() as f32;
-            let grid_height = structure_data.len() as f32;
+            let grid_width = structure_data.structure[0].len() as f32;
+            let grid_height = structure_data.structure.len() as f32;
 
             debug!("Grid width: {}, Grid height: {}", grid_width, grid_height);
 
@@ -203,9 +203,11 @@ fn setup_structures_from_file(
             );
 
             let structure_entity = commands.spawn_empty().id();
-            let structure_transform = Transform::from_translation(Vec3::new(0.0, 200.0, 1.0));
+            // Convert the world position from the JSON to a Vec3 for the transform
+            let world_pos = Vec3::new(structure_data.world_pos[0], structure_data.world_pos[1], 1.0);
+            let structure_transform = Transform::from_translation(world_pos);
 
-            for (y, row) in structure_data.iter().enumerate() {
+            for (y, row) in structure_data.structure.iter().enumerate() {
                 for (x, cell) in row.chars().enumerate() {
                     let x_translation = ((x as f32 - (grid_width / 2.0)) * structure_component.grid.cell_size)
                         + (structure_component.grid.cell_size / 2.0);

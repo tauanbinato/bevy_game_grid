@@ -1,4 +1,5 @@
 use crate::inputs::InputAction;
+use crate::modules::{Module, ModuleType};
 use crate::player::{Player, PlayerResource};
 use crate::state::GameState;
 use crate::structures::{ControlledByPlayer, Structure};
@@ -101,33 +102,49 @@ fn structure_stop_system(
     }
 }
 
+// TODO: Refactor to use observers
 fn structure_move_system(
     mut controlled_structure_query: Query<
-        (&mut LinearVelocity, &AngularVelocity, &ControlledByPlayer),
+        (&mut LinearVelocity, &AngularVelocity, &ControlledByPlayer, &Children),
         With<Structure>,
     >,
     mut player_query: Query<(&mut LinearVelocity, &mut AngularVelocity), (With<Player>, Without<Structure>)>,
     player_resource: ResMut<PlayerResource>,
     mut input_reader: EventReader<InputAction>,
+    mut child_query: Query<&mut Module>,
     time: Res<Time>,
 ) {
+    let mut able_to_move = false;
     if player_resource.is_controlling_structure {
         let delta_time = time.delta_seconds();
         // Get structure controlled by player should be unique
-        let (mut structure_velocity, structure_angular_v, controlled_by) = controlled_structure_query.single_mut();
+        let (mut structure_velocity, structure_angular_v, controlled_by, childrens) =
+            controlled_structure_query.single_mut();
 
-        if let Ok((mut player_velocity, mut player_angular_vel)) = player_query.get_mut(controlled_by.player_entity) {
-            for event in input_reader.read() {
-                match event {
-                    InputAction::Move(direction) => {
-                        structure_velocity.x += direction.x * 100.0 * delta_time;
-                        structure_velocity.y += direction.y * 100.0 * delta_time;
-                    }
-                    _ => {}
+        for child in childrens {
+            if let Ok(module) = child_query.get_mut(*child) {
+                // Check if a structure has at least one engine module as child
+                if matches!(module.module_type, ModuleType::Engine) {
+                    able_to_move = true;
                 }
             }
-            *player_velocity = structure_velocity.clone();
-            *player_angular_vel = structure_angular_v.clone();
+        }
+
+        if able_to_move {
+            if let Ok((mut player_velocity, mut player_angular_vel)) = player_query.get_mut(controlled_by.player_entity)
+            {
+                for event in input_reader.read() {
+                    match event {
+                        InputAction::Move(direction) => {
+                            structure_velocity.x += direction.x * 100.0 * delta_time;
+                            structure_velocity.y += direction.y * 100.0 * delta_time;
+                        }
+                        _ => {}
+                    }
+                }
+                *player_velocity = structure_velocity.clone();
+                *player_angular_vel = structure_angular_v.clone();
+            }
         }
     }
 }

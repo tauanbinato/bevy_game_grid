@@ -14,6 +14,7 @@ pub enum ModuleType {
     CommandCenter,
     Engine,
     Wall,
+    Cannon,
 }
 
 #[derive(Debug, Default, Component)]

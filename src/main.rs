@@ -14,6 +14,7 @@ mod player;
 mod schedule;
 mod state;
 mod structures;
+mod structures_combat;
 mod utils;
 
 use asset_loader::AssetLoaderPlugin;

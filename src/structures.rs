@@ -12,6 +12,8 @@ use bevy::prelude::*;
 use log::debug;
 use std::collections::{HashSet, VecDeque};
 
+use crate::structures_combat::StructuresCombatPlugin;
+
 #[derive(Default)]
 pub struct StructuresPlugin {
     pub debug_enable: bool,
@@ -43,6 +45,7 @@ impl Plugin for StructuresPlugin {
                     .run_if(in_state(GameState::InGame)),
             );
         }
+        app.add_plugins(StructuresCombatPlugin);
     }
 }
 
@@ -265,6 +268,21 @@ fn build_structures_from_file(
                                 true,
                             );
                         }
+                        '!' => {
+                            spawn_module(
+                                &mut commands,
+                                structure_entity,
+                                &mut structure_component,
+                                &mut materials,
+                                &mut meshes,
+                                ModuleType::Cannon,
+                                Color::from(PURPLE),
+                                (x as i32, y as i32),
+                                Vec3::new(x_translation, y_translation, 1.0),
+                                mesh_scale_factor,
+                                false,
+                            );
+                        }
                         _ => continue, // Skip characters that don't correspond to a module
                     };
                 }
@@ -317,7 +335,6 @@ pub enum StructureInteractionEvent {
     PlayerExited { player_entity: Entity, structure_entity: Entity },
 }
 
-// TODO: USE OBSERVER INSTEAD OF SYSTEM
 fn make_player_child_of_structure_system(
     mut event_reader: EventReader<StructureInteractionEvent>,
     mut command: Commands,
@@ -336,7 +353,6 @@ fn make_player_child_of_structure_system(
     }
 }
 
-// TODO: Use a component called pressurization and set to child of structure
 fn build_pressurization_system(
     mut structures_query: Query<(&mut Pressurization, &Structure)>,
     mut next_state: ResMut<NextState<GameState>>,
@@ -502,7 +518,6 @@ fn debug_draw_player_inside_structure_rect(
         }
     }
 }
-
 fn debug_pressurization_system(mut gizmos: Gizmos, query: Query<(&Transform, &Pressurization, &Structure)>) {
     for (structure_transform, pressurization, structure) in query.iter() {
         let grid = &structure.grid;

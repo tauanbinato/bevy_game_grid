@@ -56,7 +56,7 @@ fn player_stop_system(
     let deceleration_factor = DECELERATION_FACTOR;
 
     for event in input_reader.read() {
-        if matches!(event, InputAction::Break()) {
+        if matches!(event, InputAction::Break) {
             for mut velocity in &mut query {
                 velocity.0 = apply_deceleration(velocity.0, deceleration_factor, delta_time);
             }
@@ -75,7 +75,7 @@ fn structure_stop_system(
     for event in input_reader.read() {
         for (mut velocity) in &mut controlled_structure_query {
             match event {
-                InputAction::Break() => {
+                InputAction::Break => {
                     // Apply deceleration in the opposite direction of the current velocity
                     let mut velocity_vector = velocity.0;
 

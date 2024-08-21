@@ -13,14 +13,15 @@ impl Plugin for InputsPlugin {
 /// An event sent for a movement input action.
 #[derive(Event)]
 pub enum InputAction {
-    Break(),
+    Break,
     Move(Vec3),
     SpacePressed,
+    Shoot,
 }
 
-fn keyboard_input(mut movement_event_writer: EventWriter<InputAction>, keys: Res<ButtonInput<KeyCode>>) {
+fn keyboard_input(mut input_event_writer: EventWriter<InputAction>, keys: Res<ButtonInput<KeyCode>>) {
     if keys.just_released(KeyCode::Space) {
-        movement_event_writer.send(InputAction::SpacePressed);
+        input_event_writer.send(InputAction::SpacePressed);
     }
 
     let mut direction = Vec3::ZERO;
@@ -38,10 +39,14 @@ fn keyboard_input(mut movement_event_writer: EventWriter<InputAction>, keys: Res
         direction.x += 1.0;
     }
     if direction.length() > 0.0 {
-        movement_event_writer.send(InputAction::Move(direction.normalize()));
+        input_event_writer.send(InputAction::Move(direction.normalize()));
     }
 
     if keys.pressed(KeyCode::KeyX) {
-        movement_event_writer.send(InputAction::Break());
+        input_event_writer.send(InputAction::Break);
+    }
+
+    if keys.just_pressed(KeyCode::KeyG) {
+        input_event_writer.send(InputAction::Shoot);
     }
 }

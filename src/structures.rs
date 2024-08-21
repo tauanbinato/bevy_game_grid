@@ -21,11 +21,11 @@ impl Plugin for StructuresPlugin {
     fn build(&self, app: &mut App) {
         app.add_event::<ModuleInteractionEvent>()
             .add_event::<StructureInteractionEvent>()
-            .add_systems(OnEnter(GameState::BuildingStructures), setup_structures_from_file)
             .add_systems(
-                Update,
-                (control_command_center_system, update_pressurization_system).run_if(in_state(GameState::InGame)),
+                OnEnter(GameState::BuildingStructures),
+                (build_structures_from_file, build_pressurization_system).chain(),
             )
+            .add_systems(Update, control_command_center_system.run_if(in_state(GameState::InGame)))
             .add_systems(
                 PostUpdate,
                 (detect_player_inside_structure_system, make_player_child_of_structure_system)
@@ -37,7 +37,7 @@ impl Plugin for StructuresPlugin {
         if self.debug_enable {
             app.add_systems(
                 PostUpdate,
-                (debug_draw_structure_grid, debug_draw_player_inside_structure_rect)
+                (debug_draw_structure_grid, debug_draw_player_inside_structure_rect, debug_pressurization_system)
                     .after(PhysicsSet::Sync)
                     .chain()
                     .run_if(in_state(GameState::InGame)),
@@ -47,8 +47,14 @@ impl Plugin for StructuresPlugin {
 }
 
 #[derive(Component)]
-pub(crate) struct ControlledByPlayer {
-    pub(crate) player_entity: Entity,
+pub struct Pressurization {
+    pub is_pressurized: bool,
+    pub exposed_cells: HashSet<(i32, i32)>,
+}
+
+#[derive(Component)]
+pub struct ControlledByPlayer {
+    pub player_entity: Entity,
 }
 
 #[derive(Component)]
@@ -62,6 +68,7 @@ struct StructureBundle {
     structure: Structure,
     spatial_bundle: SpatialBundle,
     collision_layers: CollisionLayers,
+    pressurization: Pressurization,
 }
 
 #[derive(Component, Debug)]
@@ -173,11 +180,10 @@ impl Structure {
     }
 }
 
-fn setup_structures_from_file(
+fn build_structures_from_file(
     mut commands: Commands,
     asset_store: Res<AssetStore>,
     blob_assets: Res<Assets<AssetBlob>>,
-    mut next_state: ResMut<NextState<GameState>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
 ) {
@@ -191,8 +197,6 @@ fn setup_structures_from_file(
 
             let grid_width = structure_data.structure[0].len() as f32;
             let grid_height = structure_data.structure.len() as f32;
-
-            debug!("Grid width: {}, Grid height: {}", grid_width, grid_height);
 
             let mesh_scale_factor = 0.90; // Adjust this value to reduce the mesh size
 
@@ -293,9 +297,9 @@ fn setup_structures_from_file(
                     visibility: Visibility::Visible,
                     ..Default::default()
                 },
+                pressurization: Pressurization { is_pressurized: false, exposed_cells: HashSet::new() },
             });
         }
-        next_state.set(GameState::InGame);
     } else {
         panic!("Failed to load structures asset");
     }
@@ -332,44 +336,17 @@ fn make_player_child_of_structure_system(
     }
 }
 
-fn update_pressurization_system(mut gizmos: Gizmos, query: Query<(&Transform, &Structure)>) {
-    for (structure_transform, structure) in query.iter() {
-        let grid = &structure.grid;
+// TODO: Use a component called pressurization and set to child of structure
+fn build_pressurization_system(
+    mut structures_query: Query<(&mut Pressurization, &Structure)>,
+    mut next_state: ResMut<NextState<GameState>>,
+) {
+    for (mut pressurization, structure) in structures_query.iter_mut() {
         let exposed_cells = structure.check_pressurization();
-
-        // Iterate over all cells in the grid
-        for y in 0..grid.height as i32 {
-            for x in 0..grid.width as i32 {
-                // Get the cell and check its type
-                if let Some(cell) = grid.get(x, y) {
-                    // Skip drawing if the cell is a Wall or a Module
-                    if matches!(cell.cell_type, CellType::Module) {
-                        continue;
-                    }
-
-                    let is_pressurized = !exposed_cells.contains(&(x, y));
-
-                    // Determine the cell color based on pressurization status
-                    let color = if is_pressurized {
-                        Color::rgb(0.0, 1.0, 0.0) // Green for pressurized
-                    } else {
-                        Color::rgb(1.0, 0.0, 0.0) // Red for unpressurized
-                    };
-
-                    // Calculate the world position of the cell's center
-                    let cell_world_pos = structure.grid_cell_center_world_position(x, y, structure_transform);
-
-                    // Draw the rectangle for the cell
-                    gizmos.rect_2d(
-                        cell_world_pos,
-                        structure_transform.rotation.to_euler(EulerRot::XYZ).2,
-                        Vec2::splat(grid.cell_size * 0.70), // Slightly smaller to avoid overlapping
-                        color,
-                    );
-                }
-            }
-        }
+        pressurization.exposed_cells = exposed_cells.clone();
+        pressurization.is_pressurized = exposed_cells.is_empty();
     }
+    next_state.set(GameState::InGame);
 }
 
 fn control_command_center_system(
@@ -521,6 +498,46 @@ fn debug_draw_player_inside_structure_rect(
                     Vec2::splat(structure.grid.cell_size * 0.95),
                     Color::srgb(0.0, 1.0, 0.0), // Green color
                 );
+            }
+        }
+    }
+}
+
+fn debug_pressurization_system(mut gizmos: Gizmos, query: Query<(&Transform, &Pressurization, &Structure)>) {
+    for (structure_transform, pressurization, structure) in query.iter() {
+        let grid = &structure.grid;
+        let exposed_cells = &pressurization.exposed_cells;
+
+        // Iterate over all cells in the grid
+        for y in 0..grid.height as i32 {
+            for x in 0..grid.width as i32 {
+                // Get the cell and check its type
+                if let Some(cell) = grid.get(x, y) {
+                    // Skip drawing if the cell is a Wall or a Module
+                    if matches!(cell.cell_type, CellType::Module) {
+                        continue;
+                    }
+
+                    let is_pressurized = !exposed_cells.contains(&(x, y));
+
+                    // Determine the cell color based on pressurization status
+                    let color = if is_pressurized {
+                        Color::srgb(0.0, 1.0, 0.0) // Green for pressurized
+                    } else {
+                        Color::srgb(1.0, 0.0, 0.0) // Red for unpressurized
+                    };
+
+                    // Calculate the world position of the cell's center
+                    let cell_world_pos = structure.grid_cell_center_world_position(x, y, structure_transform);
+
+                    // Draw the rectangle for the cell
+                    gizmos.rect_2d(
+                        cell_world_pos,
+                        structure_transform.rotation.to_euler(EulerRot::XYZ).2,
+                        Vec2::splat(grid.cell_size * 0.70), // Slightly smaller to avoid overlapping
+                        color,
+                    );
+                }
             }
         }
     }

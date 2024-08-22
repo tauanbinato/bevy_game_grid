@@ -1,6 +1,7 @@
 use avian2d::prelude::PhysicsDebugPlugin;
 use bevy::app::{App, Plugin, Startup};
-use bevy::prelude::Commands;
+use bevy::ecs::schedule::{LogLevel, ScheduleBuildSettings};
+use bevy::prelude::{default, Commands, Update};
 use iyes_perf_ui::prelude::*;
 
 #[derive(Default)]
@@ -15,6 +16,9 @@ impl Plugin for DebugPlugin {
             .add_plugins(bevy::diagnostic::EntityCountDiagnosticsPlugin)
             .add_plugins(bevy::diagnostic::SystemInformationDiagnosticsPlugin)
             .add_plugins(PhysicsDebugPlugin::default());
+        app.edit_schedule(Update, |schedule| {
+            schedule.set_build_settings(ScheduleBuildSettings { ambiguity_detection: LogLevel::Warn, ..default() });
+        });
         if self.enable {
             app.add_systems(Startup, debug_startup);
         }

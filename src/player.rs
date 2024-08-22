@@ -10,7 +10,8 @@ pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(PlayerResource::default()).add_systems(OnEnter(GameState::InGame), spawn_player);
+        app.insert_resource(PlayerResource::default())
+            .add_systems(OnEnter(GameState::BuildingStructures), spawn_player);
     }
 }
 

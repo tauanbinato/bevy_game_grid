@@ -16,8 +16,14 @@ pub struct Level {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct StructureData {
+    pub world_pos: [f32; 2],
+    pub structure: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct StructuresData {
-    pub structures: Vec<Vec<String>>,
+    pub structures: Vec<StructureData>,
 }
 
 #[non_exhaustive]

@@ -1,10 +1,52 @@
 {
   "structures": [
-    [
-      "######",
-      "##C###",
-      "######",
-      "WWWWWW"
-    ]
+    {
+      "world_pos": [
+        100,
+        100
+      ],
+      "structure": [
+        "!WWWW!",
+        "C####W",
+        "W####W",
+        "WWEEWW"
+      ]
+    },
+    {
+      "world_pos": [
+        0,
+        -300
+      ],
+      "structure": [
+        "WWWWWW",
+        "W####W",
+        "W####W",
+        "WWEEWW"
+      ]
+    },
+    {
+      "world_pos": [
+        -300,
+        0
+      ],
+      "structure": [
+        "WWWWWW",
+        "#####W",
+        "W####W",
+        "WWEEWW"
+      ]
+    },
+    {
+      "world_pos": [
+        500,
+        0
+      ],
+      "structure": [
+        "WW###WWW",
+        "###WWW#W",
+        "WWWWW#WW",
+        "W##WWWWW"
+      ]
+    }
   ]
 }

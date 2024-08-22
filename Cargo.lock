@@ -2733,6 +2733,7 @@ dependencies = [
  "bevy",
  "bevy-inspector-egui",
  "iyes_perf_ui",
+ "log",
  "serde",
  "serde_json",
  "thiserror",

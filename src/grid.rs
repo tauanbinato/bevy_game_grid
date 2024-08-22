@@ -17,7 +17,6 @@ impl Plugin for GridPlugin {
         app.init_gizmo_group::<MyGridGizmos>()
             .add_event::<PlayerGridChangeEvent>()
             .add_systems(OnEnter(GameState::BuildingGrid), setup_grid_from_file)
-            .add_systems(FixedUpdate, apply_gravity.run_if(in_state(GameState::InGame)))
             .add_systems(Update, detect_grid_updates.run_if(in_state(GameState::InGame)));
 
         if self.debug_enable {
@@ -29,33 +28,20 @@ impl Plugin for GridPlugin {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum EnvironmentType {
-    OuterSpace { gravity: f32 },
-    InsideShip { gravity: f32 },
-    PlanetSurface { gravity: f32 },
-    Wall { gravity: f32 },
+#[derive(Default, Debug, Clone, PartialEq)]
+pub enum CellType {
+    #[default]
+    OuterSpace,
+    Empty,
+    Module,
 }
 
-impl From<char> for EnvironmentType {
+impl From<char> for CellType {
     fn from(c: char) -> Self {
         match c {
-            'S' => EnvironmentType::InsideShip { gravity: 1.0 },
-            'P' => EnvironmentType::PlanetSurface { gravity: 1.0 },
-            '#' => EnvironmentType::OuterSpace { gravity: 0.0 },
-            'W' => EnvironmentType::Wall { gravity: 1.0 },
-            _ => EnvironmentType::OuterSpace { gravity: 0.0 },
+            '#' => CellType::OuterSpace,
+            _ => CellType::OuterSpace,
         }
-    }
-}
-
-#[derive(Debug)]
-pub struct GridProperties {
-    pub environment: EnvironmentType,
-}
-impl Default for GridProperties {
-    fn default() -> Self {
-        Self { environment: EnvironmentType::InsideShip { gravity: 1.0 } }
     }
 }
 
@@ -71,11 +57,11 @@ pub struct Grid {
 pub struct GridCell {
     pub data: Option<Entity>,
     pub color: Srgba,
-    pub properties: GridProperties,
+    pub cell_type: CellType,
 }
 impl Default for GridCell {
     fn default() -> Self {
-        Self { data: None, color: Srgba::rgb(0.5, 0.5, 0.5), properties: GridProperties::default() }
+        Self { data: None, color: Srgba::rgb(0.5, 0.5, 0.5), cell_type: CellType::default() }
     }
 }
 
@@ -89,19 +75,16 @@ impl Grid {
         }
         Self { width, height, cell_size, cells }
     }
-
+    #[deprecated]
     pub fn insert_new(&mut self, x: i32, y: i32, data: Entity) {
         self.cells.insert(
             (x, y),
-            GridCell { data: Some(data), color: Srgba::rgb(0.5, 0.5, 0.5), properties: GridProperties::default() },
+            GridCell { data: Some(data), color: Srgba::rgb(0.5, 0.5, 0.5), cell_type: CellType::default() },
         );
     }
 
-    pub fn insert(&mut self, x: i32, y: i32) {
-        self.cells.insert(
-            (x, y),
-            GridCell { data: None, color: Srgba::rgb(0.5, 0.5, 0.5), properties: GridProperties::default() },
-        );
+    pub fn insert(&mut self, x: i32, y: i32, cell_type: CellType) {
+        self.cells.insert((x, y), GridCell { data: None, color: Srgba::rgb(0.5, 0.5, 0.5), cell_type });
     }
 
     pub fn get(&self, x: i32, y: i32) -> Option<&GridCell> {
@@ -168,7 +151,7 @@ fn setup_grid_from_file(
         debug!("Loading level with width: {}, height: {}, cell_size: {}", level.width, level.height, level.cell_size);
         for (y, row) in level.world.iter().enumerate() {
             for (x, cell) in row.chars().enumerate() {
-                let environment = EnvironmentType::from(cell);
+                let cell_type = CellType::from(cell);
 
                 let cell_world_pos = Vec3::new(
                     (x as f32 * level.cell_size) - (level.width as f32 * level.cell_size) / 2.0 + level.cell_size / 2.0,
@@ -178,30 +161,24 @@ fn setup_grid_from_file(
                     0.0,
                 );
 
-                if let EnvironmentType::Wall { .. } = environment {
-                    commands.spawn((
-                        RigidBody::Static,
-                        Collider::rectangle(level.cell_size, level.cell_size),
-                        MaterialMesh2dBundle {
-                            mesh: meshes.add(Rectangle { half_size: Vec2::splat(level.cell_size / 2.0) }).into(),
-                            material: materials.add(Color::from(GREY)),
-                            transform: Transform {
-                                translation: Vec3::new(cell_world_pos.x, cell_world_pos.y, 0.0),
-                                ..default()
-                            },
-                            ..default()
-                        },
-                    ));
-                }
+                // if let CellType::Wall { .. } = environment {
+                //     commands.spawn((
+                //         RigidBody::Static,
+                //         Collider::rectangle(level.cell_size, level.cell_size),
+                //         MaterialMesh2dBundle {
+                //             mesh: meshes.add(Rectangle { half_size: Vec2::splat(level.cell_size / 2.0) }).into(),
+                //             material: materials.add(Color::from(GREY)),
+                //             transform: Transform {
+                //                 translation: Vec3::new(cell_world_pos.x, cell_world_pos.y, 0.0),
+                //                 ..default()
+                //             },
+                //             ..default()
+                //         },
+                //     ));
+                // }
 
-                cells.insert(
-                    (x as i32, y as i32),
-                    GridCell {
-                        data: None,
-                        color: Srgba::rgb(0.5, 0.5, 0.5),
-                        properties: GridProperties { environment },
-                    },
-                );
+                cells
+                    .insert((x as i32, y as i32), GridCell { data: None, color: Srgba::rgb(0.5, 0.5, 0.5), cell_type });
             }
         }
         let grid: Grid = Grid { width: level.width, height: level.height, cell_size: level.cell_size, cells };
@@ -209,31 +186,6 @@ fn setup_grid_from_file(
         next_state.set(GameState::BuildingStructures);
     } else {
         panic!("Failed to load level asset");
-    }
-}
-
-fn debug_draw_grid(mut gizmos: Gizmos, grid: Res<Grid>) {
-    // Another way to draw the grid
-    gizmos
-        .grid_2d(
-            Vec2::ZERO,
-            0.0,
-            UVec2::new(grid.width, grid.height),
-            Vec2::splat(grid.cell_size),
-            Srgba::rgb(0.5, 0.5, 0.5),
-        )
-        .outer_edges();
-}
-
-fn debug_draw_rects(mut gizmos: Gizmos, grid: Res<Grid>, query: Query<&GlobalTransform, With<Player>>) {
-    let square_size = grid.cell_size * 0.95; // Adjust this value to control the size of the square
-
-    for transform in &query {
-        let (grid_x, grid_y) = grid.world_to_grid(transform.translation());
-
-        // Draw a red rectangle at the player's current grid position
-        let world_pos = grid.grid_to_world((grid_x, grid_y));
-        gizmos.rect_2d(Vec2::new(world_pos.x, world_pos.y), 0.0, Vec2::splat(square_size), Srgba::RED);
     }
 }
 
@@ -270,24 +222,28 @@ fn detect_grid_updates(
         }
     }
 }
-fn apply_gravity(mut query: Query<(&GlobalTransform, &mut LinearVelocity)>, grid: Res<Grid>) {
-    let damping_factor: f32 = 0.95; // Adjust this value to control the damping effect
 
-    for (transform, mut velocity) in &mut query {
+fn debug_draw_grid(mut gizmos: Gizmos, grid: Res<Grid>) {
+    // Another way to draw the grid
+    gizmos
+        .grid_2d(
+            Vec2::ZERO,
+            0.0,
+            UVec2::new(grid.width, grid.height),
+            Vec2::splat(grid.cell_size),
+            Srgba::rgb(0.5, 0.5, 0.5),
+        )
+        .outer_edges();
+}
+
+fn debug_draw_rects(mut gizmos: Gizmos, grid: Res<Grid>, query: Query<&GlobalTransform, With<Player>>) {
+    let square_size = grid.cell_size * 0.95; // Adjust this value to control the size of the square
+
+    for transform in &query {
         let (grid_x, grid_y) = grid.world_to_grid(transform.translation());
-        if let Some(cell) = grid.get(grid_x, grid_y) {
-            let gravity = match cell.properties.environment {
-                EnvironmentType::OuterSpace { gravity } => gravity,
-                EnvironmentType::InsideShip { gravity } => gravity,
-                EnvironmentType::PlanetSurface { gravity } => gravity,
-                EnvironmentType::Wall { gravity } => gravity,
-            };
 
-            if gravity == 1.0 {
-                // Apply damping to simulate gravity on a top-down world
-                velocity.x *= damping_factor;
-                velocity.y *= damping_factor;
-            }
-        }
+        // Draw a red rectangle at the player's current grid position
+        let world_pos = grid.grid_to_world((grid_x, grid_y));
+        gizmos.rect_2d(Vec2::new(world_pos.x, world_pos.y), 0.0, Vec2::splat(square_size), PURPLE);
     }
 }

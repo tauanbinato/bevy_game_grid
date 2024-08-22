@@ -1,5 +1,5 @@
 use crate::asset_loader::{AssetBlob, AssetStore, StructuresData};
-use crate::grid::Grid;
+use crate::grid::{CellType, Grid};
 use crate::inputs::InputAction;
 use crate::modules::{spawn_module, Module, ModuleType};
 use crate::player::{Player, PlayerResource};
@@ -9,18 +9,19 @@ use bevy::app::{App, Plugin, Update};
 use bevy::color::palettes::css::*;
 use bevy::math::Vec3;
 use bevy::prelude::*;
+use log::debug;
+use std::collections::{HashSet, VecDeque};
 
-#[derive(Default)]
-pub struct StructuresPlugin {
-    pub debug_enable: bool,
-}
+use crate::structures_combat::StructuresCombatPlugin;
 
 impl Plugin for StructuresPlugin {
     fn build(&self, app: &mut App) {
-        app.add_event::<ModuleInteractionEvent>()
-            .add_event::<StructureInteractionEvent>()
-            .add_systems(OnEnter(GameState::BuildingStructures), setup_structures_from_file)
-            .add_systems(Update, (control_command_center_system).chain().run_if(in_state(GameState::InGame)))
+        app.add_event::<StructureInteractionEvent>()
+            .add_systems(
+                OnEnter(GameState::BuildingStructures),
+                (build_structures_from_file, build_pressurization_system).chain(),
+            )
+            .add_systems(Update, control_command_center_system.run_if(in_state(GameState::InGame)))
             .add_systems(
                 PostUpdate,
                 (detect_player_inside_structure_system, make_player_child_of_structure_system)
@@ -32,22 +33,40 @@ impl Plugin for StructuresPlugin {
         if self.debug_enable {
             app.add_systems(
                 PostUpdate,
-                (debug_draw_structure_grid, debug_draw_player_inside_structure_rect)
+                (debug_draw_structure_grid, debug_draw_player_inside_structure_rect, debug_pressurization_system)
                     .after(PhysicsSet::Sync)
                     .chain()
                     .run_if(in_state(GameState::InGame)),
             );
         }
+        app.add_plugins(StructuresCombatPlugin);
     }
 }
 
-#[derive(Component)]
-pub(crate) struct ControlledByPlayer {
-    pub(crate) player_entity: Entity,
+#[derive(Event)]
+pub enum StructureInteractionEvent {
+    PlayerEntered { player_entity: Entity, structure_entity: Entity },
+    PlayerExited { player_entity: Entity, structure_entity: Entity },
+}
+
+#[derive(Default)]
+pub struct StructuresPlugin {
+    pub debug_enable: bool,
 }
 
 #[derive(Component)]
-struct StructureSensor(Entity);
+pub struct Pressurization {
+    pub is_pressurized: bool,
+    pub exposed_cells: HashSet<(i32, i32)>,
+}
+
+#[derive(Component)]
+pub struct ControlledByPlayer {
+    pub player_entity: Entity,
+}
+
+#[derive(Component)]
+pub struct StructureSensor(Entity);
 
 #[derive(Bundle)]
 struct StructureBundle {
@@ -57,11 +76,12 @@ struct StructureBundle {
     structure: Structure,
     spatial_bundle: SpatialBundle,
     collision_layers: CollisionLayers,
+    pressurization: Pressurization,
 }
 
 #[derive(Component, Debug)]
 pub struct Structure {
-    grid: Grid,
+    pub grid: Grid,
 }
 
 impl Structure {
@@ -116,13 +136,63 @@ impl Structure {
     pub fn is_within_grid_bounds(&self, grid_x: i32, grid_y: i32) -> bool {
         grid_x >= 0 && grid_x < self.grid.width as i32 && grid_y >= 0 && grid_y < self.grid.height as i32
     }
+
+    /// Checks if the structure is pressurized by performing a flood fill algorithm.
+    pub fn check_pressurization(&self) -> HashSet<(i32, i32)> {
+        let mut visited = HashSet::new();
+        let mut queue = VecDeque::new();
+
+        // Start flood fill from all cells on the boundary that are not modules
+        for x in 0..self.grid.width as i32 {
+            for y in &[0, self.grid.height as i32 - 1] {
+                if let Some(cell) = self.grid.get(x, *y) {
+                    if cell.cell_type != CellType::Module {
+                        queue.push_back((x, *y));
+                    }
+                }
+            }
+        }
+
+        for y in 0..self.grid.height as i32 {
+            for x in &[0, self.grid.width as i32 - 1] {
+                if let Some(cell) = self.grid.get(*x, y) {
+                    if cell.cell_type != CellType::Module {
+                        queue.push_back((*x, y));
+                    }
+                }
+            }
+        }
+
+        // Perform flood fill
+        while let Some((x, y)) = queue.pop_front() {
+            if visited.contains(&(x, y)) {
+                continue;
+            }
+
+            visited.insert((x, y));
+
+            for (dx, dy) in &[(-1, 0), (1, 0), (0, -1), (0, 1)] {
+                let nx = x + dx;
+                let ny = y + dy;
+
+                if self.is_within_grid_bounds(nx, ny) {
+                    if let Some(cell) = self.grid.get(nx, ny) {
+                        if cell.cell_type != CellType::Module && !visited.contains(&(nx, ny)) {
+                            queue.push_back((nx, ny));
+                        }
+                    }
+                }
+            }
+        }
+
+        visited
+    }
 }
 
-fn setup_structures_from_file(
+fn build_structures_from_file(
     mut commands: Commands,
     asset_store: Res<AssetStore>,
     blob_assets: Res<Assets<AssetBlob>>,
-    mut next_state: ResMut<NextState<GameState>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
 ) {
@@ -134,10 +204,8 @@ fn setup_structures_from_file(
         for structure_data in structures.structures {
             let mut structure_component = Structure::new();
 
-            let grid_width = structure_data[0].len() as f32;
-            let grid_height = structure_data.len() as f32;
-
-            debug!("Grid width: {}, Grid height: {}", grid_width, grid_height);
+            let grid_width = structure_data.structure[0].len() as f32;
+            let grid_height = structure_data.structure.len() as f32;
 
             let mesh_scale_factor = 0.90; // Adjust this value to reduce the mesh size
 
@@ -148,9 +216,11 @@ fn setup_structures_from_file(
             );
 
             let structure_entity = commands.spawn_empty().id();
-            let structure_transform = Transform::from_translation(Vec3::new(0.0, 200.0, 1.0));
+            // Convert the world position from the JSON to a Vec3 for the transform
+            let world_pos = Vec3::new(structure_data.world_pos[0], structure_data.world_pos[1], 1.0);
+            let structure_transform = Transform::from_translation(world_pos);
 
-            for (y, row) in structure_data.iter().enumerate() {
+            for (y, row) in structure_data.structure.iter().enumerate() {
                 for (x, cell) in row.chars().enumerate() {
                     let x_translation = ((x as f32 - (grid_width / 2.0)) * structure_component.grid.cell_size)
                         + (structure_component.grid.cell_size / 2.0);
@@ -163,13 +233,13 @@ fn setup_structures_from_file(
                             spawn_module(
                                 &mut commands,
                                 structure_entity,
+                                &mut structure_component,
                                 &mut materials,
                                 &mut meshes,
                                 ModuleType::Engine,
                                 Color::from(RED),
                                 (x as i32, y as i32),
                                 Vec3::new(x_translation, y_translation, 1.0),
-                                structure_component.grid.cell_size,
                                 mesh_scale_factor,
                                 false,
                             );
@@ -178,13 +248,13 @@ fn setup_structures_from_file(
                             spawn_module(
                                 &mut commands,
                                 structure_entity,
+                                &mut structure_component,
                                 &mut materials,
                                 &mut meshes,
                                 ModuleType::Wall,
                                 Color::from(GREY),
                                 (x as i32, y as i32),
                                 Vec3::new(x_translation, y_translation, 1.0),
-                                structure_component.grid.cell_size,
                                 mesh_scale_factor,
                                 false,
                             );
@@ -193,21 +263,34 @@ fn setup_structures_from_file(
                             spawn_module(
                                 &mut commands,
                                 structure_entity,
+                                &mut structure_component,
                                 &mut materials,
                                 &mut meshes,
                                 ModuleType::CommandCenter,
                                 Color::from(BLUE),
                                 (x as i32, y as i32),
                                 Vec3::new(x_translation, y_translation, -1.0),
-                                structure_component.grid.cell_size,
                                 mesh_scale_factor,
                                 true,
                             );
                         }
+                        '!' => {
+                            spawn_module(
+                                &mut commands,
+                                structure_entity,
+                                &mut structure_component,
+                                &mut materials,
+                                &mut meshes,
+                                ModuleType::Cannon,
+                                Color::from(PURPLE),
+                                (x as i32, y as i32),
+                                Vec3::new(x_translation, y_translation, 1.0),
+                                mesh_scale_factor,
+                                false,
+                            );
+                        }
                         _ => continue, // Skip characters that don't correspond to a module
                     };
-
-                    structure_component.grid.insert(x as i32, y as i32);
                 }
             }
 
@@ -238,27 +321,14 @@ fn setup_structures_from_file(
                     visibility: Visibility::Visible,
                     ..Default::default()
                 },
+                pressurization: Pressurization { is_pressurized: false, exposed_cells: HashSet::new() },
             });
         }
-        next_state.set(GameState::InGame);
     } else {
         panic!("Failed to load structures asset");
     }
 }
 
-#[derive(Event)]
-pub enum ModuleInteractionEvent {
-    TakeControl { player_entity: Entity, structure_entity: Entity },
-    ReleaseControl { player_entity: Entity, structure_entity: Entity },
-}
-
-#[derive(Event)]
-pub enum StructureInteractionEvent {
-    PlayerEntered { player_entity: Entity, structure_entity: Entity },
-    PlayerExited { player_entity: Entity, structure_entity: Entity },
-}
-
-// TODO: USE OBSERVER INSTEAD OF SYSTEM
 fn make_player_child_of_structure_system(
     mut event_reader: EventReader<StructureInteractionEvent>,
     mut command: Commands,
@@ -277,13 +347,24 @@ fn make_player_child_of_structure_system(
     }
 }
 
+fn build_pressurization_system(
+    mut structures_query: Query<(&mut Pressurization, &Structure)>,
+    mut next_state: ResMut<NextState<GameState>>,
+) {
+    for (mut pressurization, structure) in structures_query.iter_mut() {
+        let exposed_cells = structure.check_pressurization();
+        pressurization.exposed_cells = exposed_cells.clone();
+        pressurization.is_pressurized = exposed_cells.is_empty();
+    }
+    next_state.set(GameState::InGame);
+}
+
 fn control_command_center_system(
     mut event_reader: EventReader<InputAction>,
-    mut event_writer: EventWriter<ModuleInteractionEvent>,
     mut player_query: Query<(Entity, &GlobalTransform, &mut LinearVelocity), With<Player>>,
     mut command: Commands,
     mut parent_query: Query<(Entity, &Structure, &Transform, &Children)>,
-    mut child_query: Query<&mut Module>,
+    mut module_query: Query<&mut Module>,
     mut player_resource: ResMut<PlayerResource>,
 ) {
     //loop for player pos
@@ -298,7 +379,7 @@ fn control_command_center_system(
                 // Player is inside the structure's grid at this point.
                 // Check if the player is in a Command Center and if so, check if the player is already controlling it
                 for child in children {
-                    if let Ok(mut module) = child_query.get_mut(*child) {
+                    if let Ok(mut module) = module_query.get_mut(*child) {
                         if matches!(module.module_type, ModuleType::CommandCenter)
                             && matches!((module.inner_grid_pos.0, module.inner_grid_pos.1), (x, y) if x == player_grid_x && y == player_grid_y)
                         {
@@ -306,23 +387,17 @@ fn control_command_center_system(
                             for event in event_reader.read() {
                                 if let InputAction::SpacePressed = event {
                                     if module.entity_connected.is_none() {
-                                        *player_velocity = LinearVelocity::ZERO; // Stop the player's movement
-
                                         // Take control if no one is controlling it
                                         module.entity_connected = Some(player_entity);
                                         debug!("Player is now controlling the Command Center.");
 
+                                        *player_velocity = LinearVelocity::ZERO;
                                         // let's insert the PlayerControlled component to the structure
                                         command.entity(structure_entity).insert(ControlledByPlayer { player_entity });
-
+                                        // let's remove the RigidBody component from the player to make it static relative to the structure
+                                        command.entity(player_entity).remove::<RigidBody>();
                                         // Update the player resource to indicate that the player is controlling a structure
                                         player_resource.is_controlling_structure = true;
-
-                                        // Emit an event for taking control
-                                        event_writer.send(ModuleInteractionEvent::TakeControl {
-                                            player_entity,
-                                            structure_entity,
-                                        });
                                     } else if module.entity_connected == Some(player_entity) {
                                         // Release control if the player is already controlling it
                                         module.entity_connected = None;
@@ -330,15 +405,9 @@ fn control_command_center_system(
 
                                         // let's remove the PlayerControlled component from the structure
                                         command.entity(structure_entity).remove::<ControlledByPlayer>();
-
+                                        command.entity(player_entity).insert(RigidBody::Dynamic);
                                         // Update the player resource to indicate that the player is not controlling a structure
                                         player_resource.is_controlling_structure = false;
-
-                                        // Emit an event for releasing control
-                                        event_writer.send(ModuleInteractionEvent::ReleaseControl {
-                                            player_entity,
-                                            structure_entity,
-                                        });
                                     }
                                 }
                             }
@@ -426,6 +495,45 @@ fn debug_draw_player_inside_structure_rect(
                     Vec2::splat(structure.grid.cell_size * 0.95),
                     Color::srgb(0.0, 1.0, 0.0), // Green color
                 );
+            }
+        }
+    }
+}
+fn debug_pressurization_system(mut gizmos: Gizmos, query: Query<(&Transform, &Pressurization, &Structure)>) {
+    for (structure_transform, pressurization, structure) in query.iter() {
+        let grid = &structure.grid;
+        let exposed_cells = &pressurization.exposed_cells;
+
+        // Iterate over all cells in the grid
+        for y in 0..grid.height as i32 {
+            for x in 0..grid.width as i32 {
+                // Get the cell and check its type
+                if let Some(cell) = grid.get(x, y) {
+                    // Skip drawing if the cell is a Wall or a Module
+                    if matches!(cell.cell_type, CellType::Module) {
+                        continue;
+                    }
+
+                    let is_pressurized = !exposed_cells.contains(&(x, y));
+
+                    // Determine the cell color based on pressurization status
+                    let color = if is_pressurized {
+                        Color::srgb(0.0, 1.0, 0.0) // Green for pressurized
+                    } else {
+                        Color::srgb(1.0, 0.0, 0.0) // Red for unpressurized
+                    };
+
+                    // Calculate the world position of the cell's center
+                    let cell_world_pos = structure.grid_cell_center_world_position(x, y, structure_transform);
+
+                    // Draw the rectangle for the cell
+                    gizmos.rect_2d(
+                        cell_world_pos,
+                        structure_transform.rotation.to_euler(EulerRot::XYZ).2,
+                        Vec2::splat(grid.cell_size * 0.70), // Slightly smaller to avoid overlapping
+                        color,
+                    );
+                }
             }
         }
     }

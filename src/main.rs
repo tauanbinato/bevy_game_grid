@@ -14,6 +14,7 @@ mod player;
 mod schedule;
 mod state;
 mod structures;
+mod structures_combat;
 mod utils;
 
 use asset_loader::AssetLoaderPlugin;
@@ -50,7 +51,7 @@ fn main() {
                     ..default()
                 })
                 .set(LogPlugin {
-                    filter: "info,my_game::player=debug,my_game::grid=debug,my_game::structure=debug".into(),
+                    filter: "info,my_game::player=debug,my_game::grid=debug,my_game::structure=debug,my_game::movement=debug".into(),
                     ..default()
                 }),
         )
@@ -58,13 +59,13 @@ fn main() {
         .insert_resource(Gravity(Vector::ZERO))
         .add_plugins((
             LoadersPlugins,
-            GridPlugin { debug_enable: true },
+            GridPlugin { debug_enable: false },
             InputsPlugin,
             PlayerPlugin,
             MovementPlugin,
-            StructuresPlugin { debug_enable: true },
+            StructuresPlugin { debug_enable: false },
             OrePlugin,
-            DebugPlugin { enable: true },
+            DebugPlugin { enable: false },
         ))
         //.add_plugins(WorldInspectorPlugin::new())
         .run();

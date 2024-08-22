@@ -13,12 +13,13 @@ pub struct StructuresCombatPlugin;
 
 impl Plugin for StructuresCombatPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(FixedUpdate, structure_shoot_system.run_if(in_state(GameState::InGame)));
+        app.add_systems(FixedUpdate, structure_shoot_system.run_if(in_state(GameState::InGame)))
+            .add_systems(Update, print_when_completed.run_if(in_state(GameState::InGame)));
     }
 }
 
-#[derive(Component)]
-struct Projectile;
+#[derive(Component, Deref, DerefMut)]
+struct Projectile(Timer);
 
 #[derive(Bundle)]
 struct ProjectileBundle {
@@ -28,6 +29,17 @@ struct ProjectileBundle {
     mass: Mass,
     mesh_bundle: MaterialMesh2dBundle<ColorMaterial>,
     impulse: ExternalImpulse,
+    locked_axes: LockedAxes,
+}
+
+/// This system ticks the `Timer` on the entity with the `PrintOnCompletionTimer`
+/// component using bevy's `Time` resource to get the delta between each update.
+fn print_when_completed(time: Res<Time>, mut query: Query<(Entity, &mut Projectile)>, mut commands: Commands) {
+    for (projectile_entity, mut timer) in &mut query {
+        if timer.tick(time.delta()).just_finished() {
+            commands.entity(projectile_entity).despawn();
+        }
+    }
 }
 
 fn structure_shoot_system(
@@ -48,19 +60,24 @@ fn structure_shoot_system(
                     for child in childrens {
                         if let Ok((module, module_transform)) = child_query.get(*child) {
                             if matches!(module.module_type, ModuleType::Cannon) {
-                                // Calculate the forward direction based on the module's rotation
-                                let forward_direction = structure_transform.rotation.mul_vec3(Vec3::Y).normalize();
+                                // Determine the forward direction of the module in world space
+                                let forward_direction = structure_transform
+                                    .rotation
+                                    .mul_vec3(module_transform.rotation.mul_vec3(Vec3::Y))
+                                    .normalize();
 
-                                // Combine the structure's global position with the module's local position
-                                let spawn_position = structure_transform.translation
-                                    + module_transform.translation
-                                    + forward_direction * 35.0;
+                                // Calculate the global position of the cannon module
+                                let cannon_position = structure_transform.translation
+                                    + structure_transform.rotation.mul_vec3(module_transform.translation);
+
+                                // Determine the spawn position a little in front of the cannon
+                                let spawn_position = cannon_position + forward_direction * 35.0;
 
                                 // Calculate the impulse force in the forward direction
                                 let impulse_force = forward_direction * 100000.0;
 
                                 command.spawn(ProjectileBundle {
-                                    projectile: Projectile,
+                                    projectile: Projectile(Timer::from_seconds(2.0, TimerMode::Once)),
                                     rigid_body: RigidBody::Dynamic,
                                     collider: Collider::circle(5.0),
                                     mass: Mass(1.0),
@@ -72,6 +89,7 @@ fn structure_shoot_system(
                                         ..default()
                                     },
                                     impulse: ExternalImpulse::new(impulse_force.truncate()).with_persistence(false),
+                                    locked_axes: LockedAxes::ROTATION_LOCKED,
                                 });
                             }
                         }

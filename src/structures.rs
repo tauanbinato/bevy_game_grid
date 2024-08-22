@@ -14,15 +14,9 @@ use std::collections::{HashSet, VecDeque};
 
 use crate::structures_combat::StructuresCombatPlugin;
 
-#[derive(Default)]
-pub struct StructuresPlugin {
-    pub debug_enable: bool,
-}
-
 impl Plugin for StructuresPlugin {
     fn build(&self, app: &mut App) {
-        app.add_event::<ModuleInteractionEvent>()
-            .add_event::<StructureInteractionEvent>()
+        app.add_event::<StructureInteractionEvent>()
             .add_systems(
                 OnEnter(GameState::BuildingStructures),
                 (build_structures_from_file, build_pressurization_system).chain(),
@@ -49,6 +43,17 @@ impl Plugin for StructuresPlugin {
     }
 }
 
+#[derive(Event)]
+pub enum StructureInteractionEvent {
+    PlayerEntered { player_entity: Entity, structure_entity: Entity },
+    PlayerExited { player_entity: Entity, structure_entity: Entity },
+}
+
+#[derive(Default)]
+pub struct StructuresPlugin {
+    pub debug_enable: bool,
+}
+
 #[derive(Component)]
 pub struct Pressurization {
     pub is_pressurized: bool,
@@ -61,7 +66,7 @@ pub struct ControlledByPlayer {
 }
 
 #[derive(Component)]
-struct StructureSensor(Entity);
+pub struct StructureSensor(Entity);
 
 #[derive(Bundle)]
 struct StructureBundle {
@@ -132,6 +137,7 @@ impl Structure {
         grid_x >= 0 && grid_x < self.grid.width as i32 && grid_y >= 0 && grid_y < self.grid.height as i32
     }
 
+    /// Checks if the structure is pressurized by performing a flood fill algorithm.
     pub fn check_pressurization(&self) -> HashSet<(i32, i32)> {
         let mut visited = HashSet::new();
         let mut queue = VecDeque::new();
@@ -323,18 +329,6 @@ fn build_structures_from_file(
     }
 }
 
-#[derive(Event)]
-pub enum ModuleInteractionEvent {
-    TakeControl { player_entity: Entity, structure_entity: Entity },
-    ReleaseControl { player_entity: Entity, structure_entity: Entity },
-}
-
-#[derive(Event)]
-pub enum StructureInteractionEvent {
-    PlayerEntered { player_entity: Entity, structure_entity: Entity },
-    PlayerExited { player_entity: Entity, structure_entity: Entity },
-}
-
 fn make_player_child_of_structure_system(
     mut event_reader: EventReader<StructureInteractionEvent>,
     mut command: Commands,
@@ -367,11 +361,10 @@ fn build_pressurization_system(
 
 fn control_command_center_system(
     mut event_reader: EventReader<InputAction>,
-    mut event_writer: EventWriter<ModuleInteractionEvent>,
     mut player_query: Query<(Entity, &GlobalTransform, &mut LinearVelocity), With<Player>>,
     mut command: Commands,
     mut parent_query: Query<(Entity, &Structure, &Transform, &Children)>,
-    mut child_query: Query<&mut Module>,
+    mut module_query: Query<&mut Module>,
     mut player_resource: ResMut<PlayerResource>,
 ) {
     //loop for player pos
@@ -386,7 +379,7 @@ fn control_command_center_system(
                 // Player is inside the structure's grid at this point.
                 // Check if the player is in a Command Center and if so, check if the player is already controlling it
                 for child in children {
-                    if let Ok(mut module) = child_query.get_mut(*child) {
+                    if let Ok(mut module) = module_query.get_mut(*child) {
                         if matches!(module.module_type, ModuleType::CommandCenter)
                             && matches!((module.inner_grid_pos.0, module.inner_grid_pos.1), (x, y) if x == player_grid_x && y == player_grid_y)
                         {
@@ -394,23 +387,17 @@ fn control_command_center_system(
                             for event in event_reader.read() {
                                 if let InputAction::SpacePressed = event {
                                     if module.entity_connected.is_none() {
-                                        *player_velocity = LinearVelocity::ZERO; // Stop the player's movement
-
                                         // Take control if no one is controlling it
                                         module.entity_connected = Some(player_entity);
                                         debug!("Player is now controlling the Command Center.");
 
+                                        *player_velocity = LinearVelocity::ZERO;
                                         // let's insert the PlayerControlled component to the structure
                                         command.entity(structure_entity).insert(ControlledByPlayer { player_entity });
-
+                                        // let's remove the RigidBody component from the player to make it static relative to the structure
+                                        command.entity(player_entity).remove::<RigidBody>();
                                         // Update the player resource to indicate that the player is controlling a structure
                                         player_resource.is_controlling_structure = true;
-
-                                        // Emit an event for taking control
-                                        event_writer.send(ModuleInteractionEvent::TakeControl {
-                                            player_entity,
-                                            structure_entity,
-                                        });
                                     } else if module.entity_connected == Some(player_entity) {
                                         // Release control if the player is already controlling it
                                         module.entity_connected = None;
@@ -418,15 +405,9 @@ fn control_command_center_system(
 
                                         // let's remove the PlayerControlled component from the structure
                                         command.entity(structure_entity).remove::<ControlledByPlayer>();
-
+                                        command.entity(player_entity).insert(RigidBody::Dynamic);
                                         // Update the player resource to indicate that the player is not controlling a structure
                                         player_resource.is_controlling_structure = false;
-
-                                        // Emit an event for releasing control
-                                        event_writer.send(ModuleInteractionEvent::ReleaseControl {
-                                            player_entity,
-                                            structure_entity,
-                                        });
                                     }
                                 }
                             }

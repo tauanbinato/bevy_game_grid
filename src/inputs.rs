@@ -10,13 +10,14 @@ impl Plugin for InputsPlugin {
     }
 }
 
-/// An event sent for a movement input action.
+/// An event sent for a player input action.
 #[derive(Event)]
 pub enum InputAction {
     Break,
     Move(Vec3),
     SpacePressed,
     Shoot,
+    Rotate(f32), // Rotation factor: positive for clockwise, negative for counterclockwise
 }
 
 fn keyboard_input(mut input_event_writer: EventWriter<InputAction>, keys: Res<ButtonInput<KeyCode>>) {
@@ -48,5 +49,13 @@ fn keyboard_input(mut input_event_writer: EventWriter<InputAction>, keys: Res<Bu
 
     if keys.just_pressed(KeyCode::KeyG) {
         input_event_writer.send(InputAction::Shoot);
+    }
+
+    // Handle rotation with rotation factor
+    if keys.pressed(KeyCode::KeyQ) {
+        input_event_writer.send(InputAction::Rotate(1.0)); // Counterclockwise rotation
+    }
+    if keys.pressed(KeyCode::KeyE) {
+        input_event_writer.send(InputAction::Rotate(-1.0)); // Clockwise rotation
     }
 }

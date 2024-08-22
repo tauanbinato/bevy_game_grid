@@ -16,7 +16,13 @@ impl Plugin for MovementPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             FixedUpdate,
-            (player_move_system, structure_move_system, player_stop_system, structure_stop_system)
+            (
+                player_move_system,
+                structure_move_system,
+                structure_rotate_system,
+                player_stop_system,
+                structure_stop_system,
+            )
                 .run_if(in_state(GameState::InGame)),
         );
     }
@@ -65,7 +71,7 @@ fn player_stop_system(
 }
 
 fn structure_stop_system(
-    mut controlled_structure_query: Query<&mut LinearVelocity, With<crate::structures::ControlledByPlayer>>,
+    mut controlled_structure_query: Query<&mut LinearVelocity, With<ControlledByPlayer>>,
     mut input_reader: EventReader<InputAction>,
     time: Res<Time>,
 ) {
@@ -108,7 +114,6 @@ fn structure_move_system(
         (&mut LinearVelocity, &AngularVelocity, &ControlledByPlayer, &Children),
         With<Structure>,
     >,
-    mut player_query: Query<(&mut LinearVelocity, &mut AngularVelocity), (With<Player>, Without<Structure>)>,
     player_resource: ResMut<PlayerResource>,
     mut input_reader: EventReader<InputAction>,
     mut child_query: Query<&mut Module>,
@@ -131,20 +136,39 @@ fn structure_move_system(
         }
 
         if able_to_move {
-            if let Ok((mut player_velocity, mut player_angular_vel)) = player_query.get_mut(controlled_by.player_entity)
-            {
-                for event in input_reader.read() {
-                    match event {
-                        InputAction::Move(direction) => {
-                            structure_velocity.x += direction.x * 100.0 * delta_time;
-                            structure_velocity.y += direction.y * 100.0 * delta_time;
-                        }
-                        _ => {}
+            for event in input_reader.read() {
+                match event {
+                    InputAction::Move(direction) => {
+                        structure_velocity.x += direction.x * 100.0 * delta_time;
+                        structure_velocity.y += direction.y * 100.0 * delta_time;
                     }
+                    _ => {}
                 }
-                *player_velocity = structure_velocity.clone();
-                *player_angular_vel = structure_angular_v.clone();
             }
+        }
+    }
+}
+
+fn structure_rotate_system(
+    mut controlled_structure_query: Query<
+        (&mut AngularVelocity, &LinearVelocity),
+        (With<Structure>, With<ControlledByPlayer>),
+    >,
+    mut input_reader: EventReader<InputAction>,
+    time: Res<Time>,
+) {
+    let delta_time = time.delta_seconds();
+    let rotation_speed = 0.50; // Base rotation speed in radians per second
+
+    for event in input_reader.read() {
+        match event {
+            InputAction::Rotate(factor) => {
+                if let Ok((mut structure_angular_v, structure_velocity)) = controlled_structure_query.get_single_mut() {
+                    // Apply the rotation factor to the angular velocity
+                    structure_angular_v.0 += factor * rotation_speed * delta_time;
+                }
+            }
+            _ => {}
         }
     }
 }

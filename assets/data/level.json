@@ -1,8 +1,8 @@
 {
-  "width": 1,
-  "height": 1,
+  "width": 10,
+  "height": 15,
   "cell_size": 50.0,
   "world": [
-    "W"
+    "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW"
   ]
 }

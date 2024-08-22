@@ -1,7 +1,7 @@
 use crate::asset_loader::{AssetBlob, AssetStore, StructuresData};
 use crate::grid::{CellType, Grid};
 use crate::inputs::InputAction;
-use crate::modules::{spawn_module, Module, ModuleType};
+use crate::modules::{spawn_module, Module, ModuleMaterial, ModuleMaterialType, ModuleType};
 use crate::player::{Player, PlayerResource};
 use crate::state::GameState;
 use avian2d::prelude::*;
@@ -242,6 +242,7 @@ fn build_structures_from_file(
                                 Vec3::new(x_translation, y_translation, 1.0),
                                 mesh_scale_factor,
                                 false,
+                                ModuleMaterialType::Steel,
                             );
                         }
                         'W' => {
@@ -257,6 +258,7 @@ fn build_structures_from_file(
                                 Vec3::new(x_translation, y_translation, 1.0),
                                 mesh_scale_factor,
                                 false,
+                                ModuleMaterialType::Steel,
                             );
                         }
                         'C' => {
@@ -272,6 +274,7 @@ fn build_structures_from_file(
                                 Vec3::new(x_translation, y_translation, -1.0),
                                 mesh_scale_factor,
                                 true,
+                                ModuleMaterialType::Steel,
                             );
                         }
                         '!' => {
@@ -287,6 +290,7 @@ fn build_structures_from_file(
                                 Vec3::new(x_translation, y_translation, 1.0),
                                 mesh_scale_factor,
                                 false,
+                                ModuleMaterialType::Aluminum,
                             );
                         }
                         _ => continue, // Skip characters that don't correspond to a module

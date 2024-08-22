@@ -1,7 +1,8 @@
 use crate::inputs::InputAction;
-use crate::modules::{Module, ModuleType};
+use crate::modules::{Module, ModuleMaterial, ModuleType};
 use crate::state::GameState;
 use crate::structures::{ControlledByPlayer, Structure};
+use crate::UNIT_SCALE;
 use avian2d::math::Vector;
 use avian2d::prelude::*;
 use bevy::color::palettes::css::WHITE;
@@ -9,6 +10,11 @@ use bevy::color::Color;
 use bevy::prelude::*;
 use bevy::sprite::MaterialMesh2dBundle;
 use std::any::Any;
+
+const PROJECTILE_LIFETIME: f32 = 2.0;
+const PROJECTILE_IMPULSE: f32 = 1_300_000.0;
+const PROJECTILE_RADIUS: f32 = 5.0;
+const PROJECTILE_MASS: f32 = 100.0;
 
 pub struct StructuresCombatPlugin;
 
@@ -30,7 +36,6 @@ struct ProjectileBundle {
     rigid_body: RigidBody,
     collider: Collider,
     mass: Mass,
-    collider_density: ColliderDensity,
     mesh_bundle: MaterialMesh2dBundle<ColorMaterial>,
     impulse: ExternalImpulse,
     locked_axes: LockedAxes,
@@ -38,7 +43,11 @@ struct ProjectileBundle {
 
 /// This function is used to find the entity that matches the query.
 /// Given a query if the entity is found, it returns the entity, otherwise it returns `None`.
-fn find_matching_entity<T: Component>(entity1: Entity, entity2: Entity, query: &Query<&T>) -> Option<Entity> {
+fn find_matching_entity<T: Component>(
+    entity1: Entity,
+    entity2: Entity,
+    mut query: &mut Query<&mut T>,
+) -> Option<Entity> {
     if query.get(entity1).is_ok() {
         Some(entity1)
     } else if query.get(entity2).is_ok() {
@@ -67,15 +76,61 @@ fn projectile_lifetime_system(time: Res<Time>, mut query: Query<(Entity, &mut Pr
 
 fn projectile_hit_system(
     mut collision_event_reader: EventReader<CollisionStarted>,
-    projectile_query: Query<&Projectile>,
-    module_query: Query<(&Module)>,
+    projectile_physics_query: Query<(&LinearVelocity, &Mass), With<Projectile>>,
+    mut module_physics_query: Query<(&mut ModuleMaterial, &Mass), With<Module>>,
+    mut projectile_query: Query<&mut Projectile>,
+    mut module_query: Query<&mut Module>,
     mut commands: Commands,
 ) {
     for CollisionStarted(entity1, entity2) in collision_event_reader.read() {
-        if let Some(projectile_entity) = find_matching_entity(*entity1, *entity2, &projectile_query) {
-            if let Some(module_entity) = find_matching_entity(*entity1, *entity2, &module_query) {
-                despawn_entity(projectile_entity, &mut commands);
-                despawn_entity(module_entity, &mut commands);
+        if let Some(projectile_entity) = find_matching_entity(*entity1, *entity2, &mut projectile_query) {
+            if let Some(module_entity) = find_matching_entity(*entity1, *entity2, &mut module_query) {
+                if let Ok(mut module) = module_query.get_mut(module_entity) {
+                    if let Ok((projectile_vel, projectile_mass)) = projectile_physics_query.get(projectile_entity) {
+                        if let Ok((mut module_material, module_mass)) = module_physics_query.get_mut(module_entity) {
+                            // Scale the velocity according to the game unit system
+                            let scaled_velocity =
+                                Vector::new(projectile_vel.0.x / UNIT_SCALE, projectile_vel.0.y / UNIT_SCALE);
+                            // Calculate kinetic energy with the scaled velocity
+                            let projectile_kinetic_energy =
+                                (projectile_mass.0 * scaled_velocity.length_squared()) / 2.0;
+
+                            // Retrieve the material's properties
+                            let material_properties = module_material.material_type.properties();
+                            let material_strength = material_properties.strength;
+
+                            // Apply damage to the module's structural points
+                            let damage = (projectile_kinetic_energy / material_strength) * 50.0;
+                            module_material.structural_points -= damage;
+
+                            // Check if the module is destroyed
+                            if module_material.structural_points <= 0.0 {
+                                despawn_entity(module_entity, &mut commands);
+                            }
+
+                            // Debug output with all relevant information
+                            debug!(
+                                "Collision Detected!\n\
+                                Projectile Kinetic Energy: {:.2} J (joules)\n\
+                                Module Material: {:?}\n\
+                                Material Strength: {:.2} J\n\
+                                Material Density: {:.2} kg/m^3\n\
+                                Module Structural Points Before: {:.2}\n\
+                                Damage Applied: {:.2}\n\
+                                Module Structural Points After: {:.2}",
+                                projectile_kinetic_energy,
+                                module_material.material_type,
+                                material_strength,
+                                material_properties.density,
+                                module_material.structural_points,
+                                damage,
+                                module_material.structural_points - damage
+                            );
+
+                            despawn_entity(projectile_entity, &mut commands);
+                        }
+                    }
+                }
             }
         }
     }
@@ -113,17 +168,16 @@ fn structure_shoot_system(
                                 let spawn_position = cannon_position + forward_direction * 35.0;
 
                                 // Calculate the impulse force in the forward direction
-                                let impulse_force = forward_direction * 300000.0;
+                                let impulse_force = forward_direction * PROJECTILE_IMPULSE;
 
                                 commands.spawn(ProjectileBundle {
-                                    projectile: Projectile(Timer::from_seconds(2.0, TimerMode::Once)),
+                                    projectile: Projectile(Timer::from_seconds(PROJECTILE_LIFETIME, TimerMode::Once)),
                                     rigid_body: RigidBody::Dynamic,
-                                    collider: Collider::circle(5.0),
-                                    collider_density: ColliderDensity(0.0),
-                                    mass: Mass(100.0),
+                                    collider: Collider::circle(PROJECTILE_RADIUS),
+                                    mass: Mass(PROJECTILE_MASS),
                                     mesh_bundle: MaterialMesh2dBundle {
                                         material: materials.add(ColorMaterial::from(Color::from(WHITE))),
-                                        mesh: meshes.add(Circle { radius: 5.0 }).into(),
+                                        mesh: meshes.add(Circle { radius: PROJECTILE_RADIUS }).into(),
                                         transform: Transform { translation: spawn_position, ..default() },
                                         visibility: Visibility::Inherited,
                                         ..default()

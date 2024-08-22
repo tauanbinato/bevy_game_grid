@@ -161,21 +161,19 @@ fn setup_grid_from_file(
                     0.0,
                 );
 
-                // if let CellType::Wall { .. } = environment {
-                //     commands.spawn((
-                //         RigidBody::Static,
-                //         Collider::rectangle(level.cell_size, level.cell_size),
-                //         MaterialMesh2dBundle {
-                //             mesh: meshes.add(Rectangle { half_size: Vec2::splat(level.cell_size / 2.0) }).into(),
-                //             material: materials.add(Color::from(GREY)),
-                //             transform: Transform {
-                //                 translation: Vec3::new(cell_world_pos.x, cell_world_pos.y, 0.0),
-                //                 ..default()
-                //             },
-                //             ..default()
-                //         },
-                //     ));
-                // }
+                commands.spawn((
+                    RigidBody::Static,
+                    Collider::rectangle(level.cell_size, level.cell_size),
+                    MaterialMesh2dBundle {
+                        mesh: meshes.add(Rectangle { half_size: Vec2::splat(level.cell_size / 2.0) }).into(),
+                        material: materials.add(Color::from(GREY)),
+                        transform: Transform {
+                            translation: Vec3::new(cell_world_pos.x, cell_world_pos.y, 0.0),
+                            ..default()
+                        },
+                        ..default()
+                    },
+                ));
 
                 cells
                     .insert((x as i32, y as i32), GridCell { data: None, color: Srgba::rgb(0.5, 0.5, 0.5), cell_type });

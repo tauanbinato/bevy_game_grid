@@ -35,7 +35,7 @@ impl PluginGroup for LoadersPlugins {
         PluginGroupBuilder::start::<Self>().add(StatePlugin).add(SchedulePlugin).add(AssetLoaderPlugin)
     }
 }
-
+const UNIT_SCALE: f32 = 100.0; // 100 pixels = 1 meter
 fn main() {
     App::new()
         .add_plugins(
@@ -55,7 +55,7 @@ fn main() {
                     ..default()
                 }),
         )
-        .add_plugins(PhysicsPlugins::default().with_length_unit(100.0))
+        .add_plugins(PhysicsPlugins::default().with_length_unit(UNIT_SCALE))
         .insert_resource(Gravity(Vector::ZERO))
         .add_plugins((
             LoadersPlugins,

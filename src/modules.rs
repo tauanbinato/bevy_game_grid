@@ -22,8 +22,10 @@ pub enum ModuleType {
 
 #[derive(Debug)]
 pub struct MaterialProperties {
-    pub strength: f32, // Strength in joules per unit volume
-    pub density: f32,  // Density in kg/m^3
+    pub yield_strength: f32, // Yield Strength: The amount of stress the material can withstand before deforming.
+    pub thickness: f32,      // Thickness in meters
+    pub density: f32,        // Density in kg/m^2
+    pub damage_threshold: f32, // Damage threshold in Newtons
 }
 #[derive(Debug, Default)]
 pub enum ModuleMaterialType {
@@ -36,9 +38,24 @@ pub enum ModuleMaterialType {
 impl ModuleMaterialType {
     pub(crate) fn properties(&self) -> MaterialProperties {
         match self {
-            ModuleMaterialType::Steel => MaterialProperties { strength: 500.0, density: 7860.0 },
-            ModuleMaterialType::Wood => MaterialProperties { strength: 50.0, density: 600.0 },
-            ModuleMaterialType::Aluminum => MaterialProperties { strength: 300.0, density: 2600.0 },
+            ModuleMaterialType::Steel => MaterialProperties {
+                yield_strength: 250000.0,  // Strength in J/m² (converted from MPa)
+                thickness: 0.01,           // Thickness in meters (10 mm)
+                density: 78.5,             // Surface density in kg/m² (7850 kg/m³ * 0.01 m)
+                damage_threshold: 30000.0, // Approximation based on steel properties
+            },
+            ModuleMaterialType::Wood => MaterialProperties {
+                yield_strength: 40000.0,  // Strength in J/m² (converted from MPa)
+                thickness: 0.02,          // Thickness in meters (20 mm)
+                density: 12.0,            // Surface density in kg/m² (600 kg/m³ * 0.02 m)
+                damage_threshold: 5000.0, // Approximation for wood properties
+            },
+            ModuleMaterialType::Aluminum => MaterialProperties {
+                yield_strength: 150000.0,  // Strength in J/m² (converted from MPa)
+                thickness: 0.005,          // Thickness in meters (5 mm)
+                density: 13.5,             // Surface density in kg/m² (2700 kg/m³ * 0.005 m)
+                damage_threshold: 20000.0, // Approximation for aluminum properties
+            },
         }
     }
 }
@@ -90,14 +107,10 @@ pub fn spawn_module(
 ) {
     let properties = material_type.properties();
 
-    // Convert grid cell size to universe units
-    let unit_size = structure_component.grid.cell_size / UNIT_SCALE;
-
-    // Calculate volume considering area in 2D
-    let volume = (unit_size * mesh_scale_factor).powi(2);
-
-    // Calculate structural points
-    let structural_points = (properties.strength * volume * properties.density) * 0.8;
+    let unit_size = structure_component.grid.cell_size;
+    let volume = (unit_size * mesh_scale_factor).powi(2) * properties.thickness; // Consider thickness in volume
+    let structural_points =
+        ((properties.yield_strength * volume * properties.density) / properties.damage_threshold) / UNIT_SCALE;
 
     if !interactable {
         // Spawn the module entity

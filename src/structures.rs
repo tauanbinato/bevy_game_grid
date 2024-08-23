@@ -13,6 +13,7 @@ use log::debug;
 use std::collections::{HashSet, VecDeque};
 
 use crate::structures_combat::StructuresCombatPlugin;
+use crate::UNIT_SCALE;
 
 impl Plugin for StructuresPlugin {
     fn build(&self, app: &mut App) {
@@ -212,7 +213,7 @@ fn build_structures_from_file(
             structure_component.grid = Grid::new(
                 grid_width as u32,  // Width of the structure
                 grid_height as u32, // Height of the structure
-                50.0,               // Cell size
+                5.0 * UNIT_SCALE,   // Cell size
             );
 
             let structure_entity = commands.spawn_empty().id();

@@ -36,33 +36,29 @@ impl ProjectileMaterialType {
     fn properties(&self) -> MaterialProperties {
         match self {
             ProjectileMaterialType::Ballistic => MaterialProperties {
-                strength: 300.0, // Strength in J/m³ for aluminum
-                density: 28.0,   // Surface density in kg/m²
+                yield_strength: 250000.0, // Strength in J/m³ for ballistic materials (higher due to the kinetic nature)
+                density: 78.5,            // Density similar to steel or other high-density materials in kg/m^2
+                thickness: 0.01,          // Typical thickness for ballistic projectiles
+                damage_threshold: 30000.0, // Damage threshold for ballistic impacts
             },
             ProjectileMaterialType::Explosive => MaterialProperties {
-                strength: 100.0, // Explosives might be less dense and more fragile
-                density: 2000.0,
+                yield_strength: 50.0,      // Explosives are less dense and more fragile
+                density: 10.0,             // Density in kg/m^3, varies depending on the type of explosive
+                thickness: 0.02,           // Thickness could represent the effective range or blast radius
+                damage_threshold: 50000.0, // Higher threshold due to the explosive nature
             },
             ProjectileMaterialType::Energy => MaterialProperties {
-                strength: 500.0, // Energy projectiles could be more abstract, with high energy potential
-                density: 1000.0, // Lower density
+                yield_strength: 0.0,        // Energy projectiles have no physical yield strength
+                density: 0.0,               // Density is irrelevant for pure energy projectiles
+                thickness: 0.0,             // Thickness is not applicable
+                damage_threshold: 100000.0, // Extremely high damage potential
             },
         }
     }
 
-    fn calculate_impulse_with_velocity(&self, velocity_mps: f32, mass: f32) -> f32 {
-        // Convert the velocity to game units per second (GU/s)
-        let velocity_gu = velocity_mps; // UNIT_SCALE = 10 (10 pixels = 1 meter)
-
-        // Calculate the impulse (Impulse = Mass * Velocity)
-        let impulse_gu_s = mass * velocity_gu;
-
-        impulse_gu_s
-    }
-
     fn size(&self) -> f32 {
         match self {
-            ProjectileMaterialType::Ballistic => 1.0, // Desired diameter in meters (100 units in game, or 1 meter)
+            ProjectileMaterialType::Ballistic => 1.0, // Desired diameter in meters (10 units in game, or 1 meter)
             ProjectileMaterialType::Energy => 0.5,
             ProjectileMaterialType::Explosive => 0.25,
         }
@@ -73,8 +69,8 @@ impl ProjectileMaterialType {
 struct ProjectilePhysics {
     pub structural_points: f32,
     pub mass: f32,
-    pub size: f32, // Diameter
-    pub area: f32,
+    pub size: f32, // Diameter in meters
+    pub area: f32, // Area in square meters
     pub material_type: ProjectileMaterialType,
 }
 
@@ -92,25 +88,45 @@ impl ProjectilePhysics {
     }
 
     fn create(material_type: ProjectileMaterialType, scaling_factor: f32) -> Self {
-        let diameter = material_type.size(); // Diameter in meters
+        // Diameter in game units (pixels)
+        let diameter = material_type.size() * UNIT_SCALE; // Convert diameter to game units immediately
         let radius = diameter / 2.0;
 
-        // Calculate the area of the circle with the formula A = π * r²
+        // Calculate the area of the circle in game units (pixels²)
         let area = std::f32::consts::PI * radius.powi(2);
 
-        // Calculate the mass based on the material's density and the area
+        // Calculate the mass based on the material's density and the area (mass in game units)
         let mass = material_type.properties().density * area;
 
-        // Calculate structural points
-        let structural_points = material_type.properties().strength * area * material_type.properties().density;
+        // Calculate structural points (using game units for area)
+        let structural_points = material_type.properties().yield_strength * area * material_type.properties().density;
+
+        // Debug output to verify calculations
+        debug!(
+            "Projectile Created - Type: {:?}, Diameter: {:.2}px, Area: {:.4}px², Mass: {:.2}, Game Size: {:.2}px",
+            material_type, diameter, area, mass, diameter
+        );
 
         Self {
-            area: area, // Convert to game units
-            structural_points,
-            mass: mass,
-            size: diameter * UNIT_SCALE, // Convert to game units
+            area,              // Area in game units (pixels²)
+            structural_points, // Structural points based on game units
+            mass,              // Mass in game units
+            size: diameter,    // Size in game units (pixels)
             material_type,
         }
+    }
+
+    pub fn density(&self) -> f32 {
+        // Calculate the area using the size in game units (pixels)
+        let game_area = std::f32::consts::PI * (self.size / 2.0).powi(2);
+
+        // Calculate the density using mass and the area in game units
+        self.mass / game_area
+    }
+
+    pub fn impulse_force(&self, desired_velocity_mps: f32, forward_direction: Vec3) -> Vec3 {
+        // Calculate the impulse force needed to achieve the desired velocity
+        forward_direction * (self.mass * desired_velocity_mps) * UNIT_SCALE
     }
 
     pub fn debug_info(&self, impulse_force: Vec3) {
@@ -181,8 +197,13 @@ fn despawn_entity(entity: Entity, commands: &mut Commands) {
 
 /// This system ticks the `Timer` on the entity with the `projectile_entity`
 /// component using bevy's `Time` resource to get the delta between each update.
-fn projectile_lifetime_system(time: Res<Time>, mut query: Query<(Entity, &mut Projectile)>, mut commands: Commands) {
-    for (projectile_entity, mut timer) in &mut query {
+fn projectile_lifetime_system(
+    time: Res<Time>,
+    mut query: Query<(Entity, &LinearVelocity, &mut Projectile)>,
+    mut commands: Commands,
+) {
+    for (projectile_entity, projectile_vel, mut timer) in &mut query {
+        debug!("Projectile velocity: {:?}", projectile_vel.0.length());
         if timer.tick(time.delta()).just_finished() {
             despawn_entity(projectile_entity, &mut commands);
         }
@@ -209,12 +230,20 @@ fn projectile_hit_system(
                             // Calculate the kinetic energy of the projectile (Joules)
                             let projectile_kinetic_energy = 0.5 * projectile_physics.mass * velocity_mps.powi(2);
 
-                            // Retrieve the material's properties
+                            // Retrieve the material's properties for the module and projectile
                             let material_properties = module_material.material_type.properties();
-                            let material_strength = material_properties.strength;
+                            let projectile_properties = projectile_physics.material_type.properties();
 
-                            // Calculate the damage applied to the module
-                            let damage = projectile_kinetic_energy / material_strength;
+                            let material_strength = material_properties.yield_strength;
+
+                            // Factor in the projectile's density and yield strength
+                            let density_factor = projectile_properties.density / material_properties.density;
+                            let hardness_factor =
+                                projectile_properties.yield_strength / material_properties.yield_strength;
+
+                            // Calculate the adjusted damage
+                            let damage =
+                                (projectile_kinetic_energy * density_factor * hardness_factor) / material_strength;
 
                             // Update the module's structural points
                             let structural_points_before = module_material.structural_points;
@@ -229,19 +258,23 @@ fn projectile_hit_system(
                             // Debug output with all relevant information
                             debug!(
                                 "Collision Detected!\n\
-                                Velocity: {:?} m/s\n\
-                                Projectile Kinetic Energy: {:.2} J (joules)\n\
-                                Module Material: {:?}\n\
-                                Material Strength: {:.2} J\n\
-                                Material Density: {:.2} kg/m³\n\
-                                Module Structural Points Before: {:.2}\n\
-                                Damage Applied: {:.2}\n\
-                                Module Structural Points After: {:.2} {}\n",
+                            Velocity: {:?} m/s\n\
+                            Projectile Kinetic Energy: {:.2} J (joules)\n\
+                            Module Material: {:?}\n\
+                            Material Strength: {:.2} J\n\
+                            Material Density: {:.2} kg/m²\n\
+                            Projectile Material Density: {:.2} kg/m²\n\
+                            Projectile Material Strength: {:.2} J\n\
+                            Module Structural Points Before: {:.2}\n\
+                            Damage Applied: {:.2}\n\
+                            Module Structural Points After: {:.2} {}\n",
                                 velocity_mps,
                                 projectile_kinetic_energy,
                                 module_material.material_type,
                                 material_strength,
                                 material_properties.density,
+                                projectile_properties.density,
+                                projectile_properties.yield_strength,
                                 structural_points_before,
                                 damage,
                                 module_material.structural_points,
@@ -285,23 +318,26 @@ fn structure_shoot_system(
                                 // Determine the spawn position a little in front of the cannon
                                 let spawn_position = cannon_position + forward_direction * 35.0;
 
+                                // Create the projectile physics object
                                 let projectile_physics = ProjectilePhysics::ballistic(1.0);
 
-                                let projectile_density = projectile_physics.mass
-                                    / ((projectile_physics.size / 2.0).powi(2) * std::f32::consts::PI);
-                                let projectile_size = projectile_physics.size;
+                                let projectile_density = projectile_physics.density();
 
                                 // Desired velocity in meters per second (m/s)
-                                let desired_velocity_mps = 1750.0; // Example: 1750 m/s for a tank round
+                                let desired_velocity_mps = 1750.0;
 
-                                // Calculate the impulse force in the forward direction using the helper function
-                                let impulse_force = forward_direction
-                                    * projectile_physics
-                                        .material_type
-                                        .calculate_impulse_with_velocity(desired_velocity_mps, projectile_physics.mass)
-                                    / projectile_density;
+                                // Calculate the impulse force using ProjectilePhysics
+                                let impulse_force =
+                                    projectile_physics.impulse_force(desired_velocity_mps, forward_direction);
 
-                                // projectile_physics.debug_info(impulse_force);
+                                // Debug output to verify impulse force
+                                debug!(
+                                    "Impulse Force: {:.2} N·s, Desired Velocity: {:.2} m/s",
+                                    impulse_force.length(),
+                                    desired_velocity_mps
+                                );
+
+                                let projectile_size = projectile_physics.size;
 
                                 commands.spawn(ProjectileBundle {
                                     projectile: Projectile(Timer::from_seconds(PROJECTILE_LIFETIME, TimerMode::Once)),

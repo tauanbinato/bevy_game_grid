@@ -4,6 +4,7 @@ use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use bevy::window::PresentMode;
 mod asset_loader;
+mod camera;
 mod debug;
 mod grid;
 mod inputs;
@@ -18,6 +19,7 @@ mod structures_combat;
 mod utils;
 
 use asset_loader::AssetLoaderPlugin;
+use camera::CameraPlugin;
 use debug::DebugPlugin;
 use grid::GridPlugin;
 use inputs::InputsPlugin;
@@ -35,7 +37,7 @@ impl PluginGroup for LoadersPlugins {
         PluginGroupBuilder::start::<Self>().add(StatePlugin).add(SchedulePlugin).add(AssetLoaderPlugin)
     }
 }
-const UNIT_SCALE: f32 = 10.0; // 10 pixels = 1 meter
+const UNIT_SCALE: f32 = 1.0; // 1 pixels = 1 meter
 fn main() {
     App::new()
         .add_plugins(
@@ -59,13 +61,14 @@ fn main() {
         .insert_resource(Gravity(Vector::ZERO))
         .add_plugins((
             LoadersPlugins,
-            GridPlugin { debug_enable: false },
+            GridPlugin { debug_enable: true },
             InputsPlugin,
             PlayerPlugin,
             MovementPlugin,
-            StructuresPlugin { debug_enable: false },
+            StructuresPlugin { debug_enable: true },
             OrePlugin,
-            DebugPlugin { enable: false },
+            DebugPlugin { enable: true },
+            CameraPlugin,
         ))
         //.add_plugins(WorldInspectorPlugin::new())
         .run();

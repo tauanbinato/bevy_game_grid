@@ -141,8 +141,6 @@ fn setup_grid_from_file(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
-    commands.spawn(Camera2dBundle::default());
-
     if let Some(blob) = blob_assets.get(&asset_store.level_blob) {
         let level_data: String = String::from_utf8(blob.bytes.clone()).expect("Invalid UTF-8 data");
         let level: Level = serde_json::from_str(&level_data).expect("Failed to deserialize level data");

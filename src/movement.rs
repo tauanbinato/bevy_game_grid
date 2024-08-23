@@ -7,8 +7,9 @@ use avian2d::math::Vector;
 use avian2d::prelude::*;
 use bevy::prelude::*;
 
-const MOVE_SPEED: f32 = 250.0;
-const DECELERATION_FACTOR: f32 = 25.0;
+const STRUCTURE_MOVE_SPEED: f32 = 10.0; // m/s
+const PLAYER_MOVE_SPEED: f32 = 1.45; // m/s
+const PLAYER_DECELERATION_FACTOR: f32 = 2.0; // m/s
 
 pub struct MovementPlugin;
 
@@ -39,16 +40,21 @@ fn player_move_system(
     }
 
     let delta_time = time.delta_seconds();
+    let max_speed = 5.0; // Maximum speed in m/s
 
     for event in input_reader.read() {
-        for mut velocity in &mut query {
-            match event {
-                InputAction::Move(direction) => {
-                    velocity.x += direction.x * MOVE_SPEED * delta_time;
-                    velocity.y += direction.y * MOVE_SPEED * delta_time;
+        match event {
+            InputAction::Move(direction) => {
+                for mut velocity in &mut query {
+                    velocity.x += direction.x * PLAYER_MOVE_SPEED * delta_time;
+                    velocity.y += direction.y * PLAYER_MOVE_SPEED * delta_time;
+
+                    // Clamp the velocity to the maximum speed
+                    let new_velocity = Vec2::new(velocity.x, velocity.y).clamp_length_max(max_speed);
+                    *velocity = LinearVelocity(new_velocity);
                 }
-                _ => {}
             }
+            _ => {}
         }
     }
 }
@@ -59,7 +65,7 @@ fn player_stop_system(
     time: Res<Time>,
 ) {
     let delta_time = time.delta_seconds();
-    let deceleration_factor = DECELERATION_FACTOR;
+    let deceleration_factor = PLAYER_DECELERATION_FACTOR;
 
     for event in input_reader.read() {
         if matches!(event, InputAction::Break) {
@@ -76,7 +82,7 @@ fn structure_stop_system(
     time: Res<Time>,
 ) {
     let delta_time = time.delta_seconds();
-    let deceleration_factor = DECELERATION_FACTOR;
+    let deceleration_factor = PLAYER_DECELERATION_FACTOR;
 
     for event in input_reader.read() {
         for (mut velocity) in &mut controlled_structure_query {
@@ -122,6 +128,8 @@ fn structure_move_system(
     let mut able_to_move = false;
     if player_resource.is_controlling_structure {
         let delta_time = time.delta_seconds();
+        let structure_max_speed = 10.0; // Maximum speed in m/s
+
         // Get structure controlled by player should be unique
         let (mut structure_velocity, structure_angular_v, controlled_by, childrens) =
             controlled_structure_query.single_mut();
@@ -139,8 +147,13 @@ fn structure_move_system(
             for event in input_reader.read() {
                 match event {
                     InputAction::Move(direction) => {
-                        structure_velocity.x += direction.x * 100.0 * delta_time;
-                        structure_velocity.y += direction.y * 100.0 * delta_time;
+                        structure_velocity.x += direction.x * STRUCTURE_MOVE_SPEED * delta_time;
+                        structure_velocity.y += direction.y * STRUCTURE_MOVE_SPEED * delta_time;
+
+                        // Clamp the velocity to the maximum speed
+                        let new_max_velocity =
+                            Vec2::new(structure_velocity.x, structure_velocity.y).clamp_length_max(structure_max_speed);
+                        *structure_velocity = LinearVelocity(new_max_velocity);
                     }
                     _ => {}
                 }
@@ -158,7 +171,8 @@ fn structure_rotate_system(
     time: Res<Time>,
 ) {
     let delta_time = time.delta_seconds();
-    let rotation_speed = 0.50; // Base rotation speed in radians per second
+    let rotation_speed = 0.1; // Base rotation speed in radians per second
+    let max_rotation_speed = 0.2; // Maximum rotation speed in radians per second
 
     for event in input_reader.read() {
         match event {
@@ -166,6 +180,10 @@ fn structure_rotate_system(
                 if let Ok((mut structure_angular_v, structure_velocity)) = controlled_structure_query.get_single_mut() {
                     // Apply the rotation factor to the angular velocity
                     structure_angular_v.0 += factor * rotation_speed * delta_time;
+
+                    // Clamp the angular velocity to the maximum speed
+                    let new_max_angular_velocity = structure_angular_v.0.clamp(-max_rotation_speed, max_rotation_speed);
+                    *structure_angular_v = AngularVelocity(new_max_angular_velocity);
                 }
             }
             _ => {}

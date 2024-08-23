@@ -1,5 +1,6 @@
 use crate::grid::Grid;
 use crate::state::GameState;
+use crate::UNIT_SCALE;
 use avian2d::prelude::*;
 use bevy::prelude::*;
 use bevy::sprite::MaterialMesh2dBundle;
@@ -35,27 +36,24 @@ fn spawn_player(
     let initial_grid_position = (2, 2);
     let initial_world_position = grid.grid_to_world(initial_grid_position);
 
-    player_grid_position.grid_position = initial_grid_position;
+    //player_grid_position.grid_position = initial_grid_position;
 
     let player_entity = commands
         .spawn((
             RigidBody::Dynamic,
-            Collider::circle(10.0),
+            Collider::circle(1.0 * UNIT_SCALE),
             ColliderDensity(0.0),
-            Mass(1000.0),
+            Mass(100.0),
             Player,
             MaterialMesh2dBundle {
-                mesh: meshes.add(Circle { radius: 10.0 }).into(),
+                mesh: meshes.add(Circle { radius: 1.0 * UNIT_SCALE }).into(),
                 material: materials.add(ColorMaterial::from(Color::WHITE)),
-                transform: Transform {
-                    translation: Vec3::new(initial_world_position.x, initial_world_position.y, 5.0),
-                    ..default()
-                },
+                transform: Transform { translation: Vec3::new(-25.0, 0.0, 5.0), ..default() },
                 visibility: Visibility::Visible,
                 ..default()
             },
         ))
         .id();
 
-    grid.insert_new(initial_grid_position.0, initial_grid_position.1, player_entity);
+    //grid.insert_new(initial_grid_position.0, initial_grid_position.1, player_entity);
 }

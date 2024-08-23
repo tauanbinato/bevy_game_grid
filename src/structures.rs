@@ -14,6 +14,7 @@ use std::collections::{HashSet, VecDeque};
 
 use crate::structures_combat::StructuresCombatPlugin;
 use crate::UNIT_SCALE;
+const STRUCTURE_CELL_SIZE: f32 = 5.0 * UNIT_SCALE;
 
 impl Plugin for StructuresPlugin {
     fn build(&self, app: &mut App) {
@@ -73,7 +74,6 @@ pub struct StructureSensor(Entity);
 struct StructureBundle {
     rigid_body: RigidBody,
     collider: Collider,
-    collision_margin: CollisionMargin,
     structure: Structure,
     spatial_bundle: SpatialBundle,
     collision_layers: CollisionLayers,
@@ -211,9 +211,9 @@ fn build_structures_from_file(
             let mesh_scale_factor = 0.90; // Adjust this value to reduce the mesh size
 
             structure_component.grid = Grid::new(
-                grid_width as u32,  // Width of the structure
-                grid_height as u32, // Height of the structure
-                5.0 * UNIT_SCALE,   // Cell size
+                grid_width as u32,   // Width of the structure
+                grid_height as u32,  // Height of the structure
+                STRUCTURE_CELL_SIZE, // Cell size
             );
 
             let structure_entity = commands.spawn_empty().id();
@@ -319,7 +319,6 @@ fn build_structures_from_file(
                     grid_width * structure_component.grid.cell_size,
                     grid_height * structure_component.grid.cell_size,
                 ),
-                collision_margin: CollisionMargin(0.1),
                 structure: structure_component,
                 spatial_bundle: SpatialBundle {
                     transform: Transform::from_translation(structure_transform.translation),

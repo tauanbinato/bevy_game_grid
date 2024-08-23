@@ -14,13 +14,12 @@ impl Plugin for DebugPlugin {
             // we want Bevy to measure these values for us:
             .add_plugins(bevy::diagnostic::FrameTimeDiagnosticsPlugin)
             .add_plugins(bevy::diagnostic::EntityCountDiagnosticsPlugin)
-            .add_plugins(bevy::diagnostic::SystemInformationDiagnosticsPlugin)
-            .add_plugins(PhysicsDebugPlugin::default());
+            .add_plugins(bevy::diagnostic::SystemInformationDiagnosticsPlugin);
         app.edit_schedule(Update, |schedule| {
             schedule.set_build_settings(ScheduleBuildSettings { ambiguity_detection: LogLevel::Warn, ..default() });
         });
         if self.enable {
-            app.add_systems(Startup, debug_startup);
+            app.add_systems(Startup, debug_startup).add_plugins(PhysicsDebugPlugin::default());
         }
     }
 }

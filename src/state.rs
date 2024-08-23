@@ -13,12 +13,7 @@ pub enum GameState {
 pub struct StatePlugin;
 impl Plugin for StatePlugin {
     fn build(&self, app: &mut App) {
-        app.init_state::<GameState>().add_systems(
-            Update,
-            (
-                game_state_input_events,
-            ),
-        );
+        app.init_state::<GameState>().add_systems(Update, (game_state_input_events,));
     }
 }
 

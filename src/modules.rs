@@ -79,7 +79,6 @@ pub struct Module {
 pub struct ModuleBundleRigid {
     pub collider: Collider,
     pub collider_density: ColliderDensity,
-    pub mass: Mass,
     pub module: Module,
     pub module_material: ModuleMaterial,
     pub mesh_bundle: MaterialMesh2dBundle<ColorMaterial>,
@@ -120,8 +119,7 @@ pub fn spawn_module(
                     structure_component.grid.cell_size * mesh_scale_factor,
                     structure_component.grid.cell_size * mesh_scale_factor,
                 ),
-                collider_density: ColliderDensity(0.0),
-                mass: Mass(5000.0),
+                collider_density: ColliderDensity(volume * properties.density),
                 module: Module { module_type, inner_grid_pos: grid_pos, ..default() },
                 module_material: ModuleMaterial { structural_points, material_type },
                 mesh_bundle: MaterialMesh2dBundle {

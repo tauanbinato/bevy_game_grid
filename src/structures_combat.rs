@@ -52,7 +52,7 @@ impl ProjectileMaterialType {
 
     fn calculate_impulse_with_velocity(&self, velocity_mps: f32, mass: f32) -> f32 {
         // Convert the velocity to game units per second (GU/s)
-        let velocity_gu = velocity_mps * UNIT_SCALE; // UNIT_SCALE = 10 (10 pixels = 1 meter)
+        let velocity_gu = velocity_mps; // UNIT_SCALE = 10 (10 pixels = 1 meter)
 
         // Calculate the impulse (Impulse = Mass * Velocity)
         let impulse_gu_s = mass * velocity_gu;
@@ -74,6 +74,7 @@ struct ProjectilePhysics {
     pub structural_points: f32,
     pub mass: f32,
     pub size: f32, // Diameter
+    pub area: f32,
     pub material_type: ProjectileMaterialType,
 }
 
@@ -104,8 +105,9 @@ impl ProjectilePhysics {
         let structural_points = material_type.properties().strength * area * material_type.properties().density;
 
         Self {
+            area: area, // Convert to game units
             structural_points,
-            mass,
+            mass: mass,
             size: diameter * UNIT_SCALE, // Convert to game units
             material_type,
         }
@@ -134,7 +136,7 @@ impl ProjectilePhysics {
             area,
             density,
             self.structural_points,
-            (impulse_force.length() / self.mass) / UNIT_SCALE
+            impulse_force.length()
         );
     }
 }
@@ -182,7 +184,6 @@ fn despawn_entity(entity: Entity, commands: &mut Commands) {
 fn projectile_lifetime_system(time: Res<Time>, mut query: Query<(Entity, &mut Projectile)>, mut commands: Commands) {
     for (projectile_entity, mut timer) in &mut query {
         if timer.tick(time.delta()).just_finished() {
-            debug!("Projectile despawned due to lifetime expiration");
             despawn_entity(projectile_entity, &mut commands);
         }
     }
@@ -202,43 +203,49 @@ fn projectile_hit_system(
                 if let Ok(mut module) = module_query.get_mut(module_entity) {
                     if let Ok((projectile_vel, projectile_physics)) = projectile_physics_query.get(projectile_entity) {
                         if let Ok((mut module_material, module_mass)) = module_physics_query.get_mut(module_entity) {
-                            // Scale the velocity according to the game unit system
-                            let scaled_velocity =
-                                Vector::new(projectile_vel.0.x / UNIT_SCALE, projectile_vel.0.y / UNIT_SCALE);
-                            // Calculate kinetic energy with the scaled velocity
-                            let projectile_kinetic_energy =
-                                (projectile_physics.mass * scaled_velocity.length_squared()) / 2.0;
+                            // No need to scale the velocity; it's already in m/s.
+                            let velocity_mps = (projectile_vel.0.length());
+
+                            // Calculate the kinetic energy of the projectile (Joules)
+                            let projectile_kinetic_energy = 0.5 * projectile_physics.mass * velocity_mps.powi(2);
 
                             // Retrieve the material's properties
                             let material_properties = module_material.material_type.properties();
                             let material_strength = material_properties.strength;
 
-                            // Apply damage to the module's structural points
-                            let damage = (projectile_kinetic_energy / material_strength);
+                            // Calculate the damage applied to the module
+                            let damage = projectile_kinetic_energy / material_strength;
+
+                            // Update the module's structural points
+                            let structural_points_before = module_material.structural_points;
                             module_material.structural_points -= damage;
 
                             // Check if the module is destroyed
-                            if module_material.structural_points <= 0.0 {
+                            let is_destroyed = module_material.structural_points <= 0.0;
+                            if is_destroyed {
                                 despawn_entity(module_entity, &mut commands);
                             }
 
                             // Debug output with all relevant information
                             debug!(
                                 "Collision Detected!\n\
+                                Velocity: {:?} m/s\n\
                                 Projectile Kinetic Energy: {:.2} J (joules)\n\
                                 Module Material: {:?}\n\
                                 Material Strength: {:.2} J\n\
-                                Material Density: {:.2} kg/m^3\n\
+                                Material Density: {:.2} kg/m³\n\
                                 Module Structural Points Before: {:.2}\n\
                                 Damage Applied: {:.2}\n\
-                                Module Structural Points After: {:.2}",
+                                Module Structural Points After: {:.2} {}\n",
+                                velocity_mps,
                                 projectile_kinetic_energy,
                                 module_material.material_type,
                                 material_strength,
                                 material_properties.density,
-                                module_material.structural_points,
+                                structural_points_before,
                                 damage,
-                                module_material.structural_points - damage
+                                module_material.structural_points,
+                                if is_destroyed { "(Destroyed)" } else { "" },
                             );
 
                             despawn_entity(projectile_entity, &mut commands);
@@ -280,7 +287,8 @@ fn structure_shoot_system(
 
                                 let projectile_physics = ProjectilePhysics::ballistic(1.0);
 
-                                let projectile_mass = projectile_physics.mass;
+                                let projectile_density = projectile_physics.mass
+                                    / ((projectile_physics.size / 2.0).powi(2) * std::f32::consts::PI);
                                 let projectile_size = projectile_physics.size;
 
                                 // Desired velocity in meters per second (m/s)
@@ -290,18 +298,17 @@ fn structure_shoot_system(
                                 let impulse_force = forward_direction
                                     * projectile_physics
                                         .material_type
-                                        .calculate_impulse_with_velocity(desired_velocity_mps, projectile_mass);
+                                        .calculate_impulse_with_velocity(desired_velocity_mps, projectile_physics.mass)
+                                    / projectile_density;
 
-                                projectile_physics.debug_info(impulse_force);
+                                // projectile_physics.debug_info(impulse_force);
 
                                 commands.spawn(ProjectileBundle {
                                     projectile: Projectile(Timer::from_seconds(PROJECTILE_LIFETIME, TimerMode::Once)),
                                     projectile_physics,
                                     rigid_body: RigidBody::Dynamic,
                                     collider: Collider::circle(projectile_size / 2.0),
-                                    collider_density: ColliderDensity(
-                                        projectile_mass / ((projectile_size / 2.0).powi(2) * std::f32::consts::PI),
-                                    ),
+                                    collider_density: ColliderDensity(projectile_density),
                                     mesh_bundle: MaterialMesh2dBundle {
                                         material: materials.add(ColorMaterial::from(Color::from(WHITE))),
                                         mesh: meshes.add(Circle { radius: projectile_size / 2.0 }).into(),

@@ -35,7 +35,7 @@ impl PluginGroup for LoadersPlugins {
         PluginGroupBuilder::start::<Self>().add(StatePlugin).add(SchedulePlugin).add(AssetLoaderPlugin)
     }
 }
-const UNIT_SCALE: f32 = 100.0; // 100 pixels = 1 meter
+const UNIT_SCALE: f32 = 10.0; // 10 pixels = 1 meter
 fn main() {
     App::new()
         .add_plugins(
@@ -51,7 +51,7 @@ fn main() {
                     ..default()
                 })
                 .set(LogPlugin {
-                    filter: "info,my_game::player=debug,my_game::grid=debug,my_game::structure=debug,my_game::movement=debug".into(),
+                    filter: "info,my_game::player=debug,my_game::grid=debug,my_game::structure=debug,my_game::movement=debug,my_game::modules=debug".into(),
                     ..default()
                 }),
         )

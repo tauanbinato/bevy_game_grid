@@ -6,7 +6,9 @@ use bevy::asset::Assets;
 use bevy::color::Color;
 use bevy::hierarchy::BuildChildren;
 use bevy::math::{Vec2, Vec3};
-use bevy::prelude::{default, Bundle, Commands, Component, Entity, Mesh, Rectangle, ResMut, Transform, Visibility};
+use bevy::prelude::{
+    debug, default, Bundle, Commands, Component, Entity, Mesh, Rectangle, ResMut, Transform, Visibility,
+};
 use bevy::sprite::{ColorMaterial, MaterialMesh2dBundle};
 
 #[derive(Debug, Default)]
@@ -95,7 +97,7 @@ pub fn spawn_module(
     let volume = (unit_size * mesh_scale_factor).powi(2);
 
     // Calculate structural points
-    let structural_points = (properties.strength * volume * properties.density);
+    let structural_points = (properties.strength * volume * properties.density) * 0.8;
 
     if !interactable {
         // Spawn the module entity

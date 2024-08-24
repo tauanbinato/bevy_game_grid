@@ -53,7 +53,7 @@ fn main() {
                     ..default()
                 })
                 .set(LogPlugin {
-                    filter: "info,my_game::player=debug,my_game::grid=debug,my_game::structure=debug,my_game::movement=debug,my_game::modules=debug".into(),
+                    filter: "info,my_game::player=debug,my_game::grid=debug,my_game::structure=debug,my_game::movement=debug,my_game::modules=debug,my_game::structure_combat=debug".into(),
                     ..default()
                 }),
         )
@@ -65,9 +65,9 @@ fn main() {
             InputsPlugin,
             PlayerPlugin,
             MovementPlugin,
-            StructuresPlugin { debug_enable: true },
+            StructuresPlugin { debug_enable: false },
             OrePlugin,
-            DebugPlugin { enable: true },
+            DebugPlugin { enable: false },
             CameraPlugin,
         ))
         //.add_plugins(WorldInspectorPlugin::new())

@@ -37,7 +37,7 @@ impl ProjectileMaterialType {
         match self {
             ProjectileMaterialType::Ballistic => MaterialProperties {
                 yield_strength: 250000.0, // Strength in J/m³ for ballistic materials (higher due to the kinetic nature)
-                density: 78.5,            // Density similar to steel or other high-density materials in kg/m^2
+                density: 255.5,           // Density similar to steel or other high-density materials in kg/m^2
                 thickness: 0.01,          // Typical thickness for ballistic projectiles
                 damage_threshold: 30000.0, // Damage threshold for ballistic impacts
             },
@@ -58,7 +58,7 @@ impl ProjectileMaterialType {
 
     fn size(&self) -> f32 {
         match self {
-            ProjectileMaterialType::Ballistic => 1.0, // Desired diameter in meters (10 units in game, or 1 meter)
+            ProjectileMaterialType::Ballistic => 0.5, // Desired diameter in meters (1 units in game, or 1 meter)
             ProjectileMaterialType::Energy => 0.5,
             ProjectileMaterialType::Explosive => 0.25,
         }
@@ -100,12 +100,6 @@ impl ProjectilePhysics {
 
         // Calculate structural points (using game units for area)
         let structural_points = material_type.properties().yield_strength * area * material_type.properties().density;
-
-        // Debug output to verify calculations
-        debug!(
-            "Projectile Created - Type: {:?}, Diameter: {:.2}px, Area: {:.4}px², Mass: {:.2}, Game Size: {:.2}px",
-            material_type, diameter, area, mass, diameter
-        );
 
         Self {
             area,              // Area in game units (pixels²)
@@ -203,7 +197,7 @@ fn projectile_lifetime_system(
     mut commands: Commands,
 ) {
     for (projectile_entity, projectile_vel, mut timer) in &mut query {
-        debug!("Projectile velocity: {:?}", projectile_vel.0.length());
+        //debug!("Projectile velocity: {:?}", projectile_vel.0.length());
         if timer.tick(time.delta()).just_finished() {
             despawn_entity(projectile_entity, &mut commands);
         }
@@ -213,7 +207,7 @@ fn projectile_lifetime_system(
 fn projectile_hit_system(
     mut collision_event_reader: EventReader<CollisionStarted>,
     projectile_physics_query: Query<(&LinearVelocity, &ProjectilePhysics), With<Projectile>>,
-    mut module_physics_query: Query<(&mut ModuleMaterial, &Mass), With<Module>>,
+    mut module_physics_query: Query<(&mut ModuleMaterial), With<Module>>,
     mut projectile_query: Query<&mut Projectile>,
     mut module_query: Query<&mut Module>,
     mut commands: Commands,
@@ -221,43 +215,40 @@ fn projectile_hit_system(
     for CollisionStarted(entity1, entity2) in collision_event_reader.read() {
         if let Some(projectile_entity) = find_matching_entity(*entity1, *entity2, &mut projectile_query) {
             if let Some(module_entity) = find_matching_entity(*entity1, *entity2, &mut module_query) {
-                if let Ok(mut module) = module_query.get_mut(module_entity) {
-                    if let Ok((projectile_vel, projectile_physics)) = projectile_physics_query.get(projectile_entity) {
-                        if let Ok((mut module_material, module_mass)) = module_physics_query.get_mut(module_entity) {
-                            // No need to scale the velocity; it's already in m/s.
-                            let velocity_mps = (projectile_vel.0.length());
+                if let Ok((projectile_vel, projectile_physics)) = projectile_physics_query.get(projectile_entity) {
+                    if let Ok((mut module_material)) = module_physics_query.get_mut(module_entity) {
+                        // No need to scale the velocity; it's already in m/s.
+                        let velocity_mps = (projectile_vel.0.length());
 
-                            // Calculate the kinetic energy of the projectile (Joules)
-                            let projectile_kinetic_energy = 0.5 * projectile_physics.mass * velocity_mps.powi(2);
+                        // Calculate the kinetic energy of the projectile (Joules)
+                        let projectile_kinetic_energy = 0.5 * projectile_physics.mass * velocity_mps.powi(2);
 
-                            // Retrieve the material's properties for the module and projectile
-                            let material_properties = module_material.material_type.properties();
-                            let projectile_properties = projectile_physics.material_type.properties();
+                        // Retrieve the material's properties for the module and projectile
+                        let material_properties = module_material.material_type.properties();
+                        let projectile_properties = projectile_physics.material_type.properties();
 
-                            let material_strength = material_properties.yield_strength;
+                        let material_strength = material_properties.yield_strength;
 
-                            // Factor in the projectile's density and yield strength
-                            let density_factor = projectile_properties.density / material_properties.density;
-                            let hardness_factor =
-                                projectile_properties.yield_strength / material_properties.yield_strength;
+                        // Factor in the projectile's density and yield strength
+                        let density_factor = projectile_properties.density / material_properties.density;
+                        let hardness_factor = projectile_properties.yield_strength / material_properties.yield_strength;
 
-                            // Calculate the adjusted damage
-                            let damage =
-                                (projectile_kinetic_energy * density_factor * hardness_factor) / material_strength;
+                        // Calculate the adjusted damage
+                        let damage = (projectile_kinetic_energy * density_factor * hardness_factor) / material_strength;
 
-                            // Update the module's structural points
-                            let structural_points_before = module_material.structural_points;
-                            module_material.structural_points -= damage;
+                        // Update the module's structural points
+                        let structural_points_before = module_material.structural_points;
+                        module_material.structural_points -= damage;
 
-                            // Check if the module is destroyed
-                            let is_destroyed = module_material.structural_points <= 0.0;
-                            if is_destroyed {
-                                despawn_entity(module_entity, &mut commands);
-                            }
+                        // Check if the module is destroyed
+                        let is_destroyed = module_material.structural_points <= 0.0;
+                        if is_destroyed {
+                            despawn_entity(module_entity, &mut commands);
+                        }
 
-                            // Debug output with all relevant information
-                            debug!(
-                                "Collision Detected!\n\
+                        // Debug output with all relevant information
+                        debug!(
+                            "Collision Detected!\n\
                             Velocity: {:?} m/s\n\
                             Projectile Kinetic Energy: {:.2} J (joules)\n\
                             Module Material: {:?}\n\
@@ -268,21 +259,20 @@ fn projectile_hit_system(
                             Module Structural Points Before: {:.2}\n\
                             Damage Applied: {:.2}\n\
                             Module Structural Points After: {:.2} {}\n",
-                                velocity_mps,
-                                projectile_kinetic_energy,
-                                module_material.material_type,
-                                material_strength,
-                                material_properties.density,
-                                projectile_properties.density,
-                                projectile_properties.yield_strength,
-                                structural_points_before,
-                                damage,
-                                module_material.structural_points,
-                                if is_destroyed { "(Destroyed)" } else { "" },
-                            );
+                            velocity_mps,
+                            projectile_kinetic_energy,
+                            module_material.material_type,
+                            material_strength,
+                            material_properties.density,
+                            projectile_properties.density,
+                            projectile_properties.yield_strength,
+                            structural_points_before,
+                            damage,
+                            module_material.structural_points,
+                            if is_destroyed { "(Destroyed)" } else { "" },
+                        );
 
-                            despawn_entity(projectile_entity, &mut commands);
-                        }
+                        despawn_entity(projectile_entity, &mut commands);
                     }
                 }
             }
@@ -316,7 +306,7 @@ fn structure_shoot_system(
                                     + structure_transform.rotation.mul_vec3(module_transform.translation);
 
                                 // Determine the spawn position a little in front of the cannon
-                                let spawn_position = cannon_position + forward_direction * 35.0;
+                                let spawn_position = cannon_position + forward_direction * 3.0;
 
                                 // Create the projectile physics object
                                 let projectile_physics = ProjectilePhysics::ballistic(1.0);
@@ -324,18 +314,11 @@ fn structure_shoot_system(
                                 let projectile_density = projectile_physics.density();
 
                                 // Desired velocity in meters per second (m/s)
-                                let desired_velocity_mps = 1750.0;
+                                let desired_velocity_mps = 500.0;
 
                                 // Calculate the impulse force using ProjectilePhysics
                                 let impulse_force =
                                     projectile_physics.impulse_force(desired_velocity_mps, forward_direction);
-
-                                // Debug output to verify impulse force
-                                debug!(
-                                    "Impulse Force: {:.2} N·s, Desired Velocity: {:.2} m/s",
-                                    impulse_force.length(),
-                                    desired_velocity_mps
-                                );
 
                                 let projectile_size = projectile_physics.size;
 

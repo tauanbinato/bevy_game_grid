@@ -74,20 +74,22 @@ pub struct StructureSensor(Entity);
 struct StructureBundle {
     rigid_body: RigidBody,
     collider: Collider,
+    collider_density: ColliderDensity,
     structure: Structure,
     spatial_bundle: SpatialBundle,
     collision_layers: CollisionLayers,
     pressurization: Pressurization,
 }
 
-#[derive(Component, Debug)]
+#[derive(Component, Debug, Default)]
 pub struct Structure {
+    pub density: f32,
     pub grid: Grid,
 }
 
 impl Structure {
     pub fn new() -> Self {
-        Structure { grid: Default::default() }
+        Structure { ..Default::default() }
     }
 
     /// Converts a world position into the grid coordinates of the structure.
@@ -299,17 +301,17 @@ fn build_structures_from_file(
                 }
             }
 
-            commands.entity(structure_entity).with_children(|children| {
-                children.spawn((
-                    StructureSensor(structure_entity),
-                    Collider::rectangle(
-                        grid_width * structure_component.grid.cell_size,
-                        grid_height * structure_component.grid.cell_size,
-                    ),
-                    Transform { translation: Vec3::new(0.0, 0.0, 2.0), ..default() },
-                    Sensor,
-                ));
-            });
+            // commands.entity(structure_entity).with_children(|children| {
+            //     children.spawn((
+            //         StructureSensor(structure_entity),
+            //         Collider::rectangle(
+            //             grid_width * structure_component.grid.cell_size,
+            //             grid_height * structure_component.grid.cell_size,
+            //         ),
+            //         Transform { translation: Vec3::new(0.0, 0.0, 2.0), ..default() },
+            //         Sensor,
+            //     ));
+            // });
 
             // Insert the structure bundle
             commands.entity(structure_entity).insert(StructureBundle {
@@ -319,6 +321,7 @@ fn build_structures_from_file(
                     grid_width * structure_component.grid.cell_size,
                     grid_height * structure_component.grid.cell_size,
                 ),
+                collider_density: ColliderDensity(structure_component.density),
                 structure: structure_component,
                 spatial_bundle: SpatialBundle {
                     transform: Transform::from_translation(structure_transform.translation),

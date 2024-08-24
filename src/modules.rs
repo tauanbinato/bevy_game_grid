@@ -82,6 +82,7 @@ pub struct ModuleBundleRigid {
     pub module: Module,
     pub module_material: ModuleMaterial,
     pub mesh_bundle: MaterialMesh2dBundle<ColorMaterial>,
+    pub external_force: ExternalForce,
 }
 
 #[derive(Bundle)]
@@ -133,6 +134,7 @@ pub fn spawn_module(
                     visibility: Visibility::Inherited,
                     ..default()
                 },
+                external_force: ExternalForce::default(),
             });
         });
     } else {
@@ -155,4 +157,5 @@ pub fn spawn_module(
     }
 
     structure_component.grid.insert(grid_pos.0, grid_pos.1, CellType::Module);
+    structure_component.density += properties.density;
 }

@@ -65,9 +65,9 @@ fn main() {
             InputsPlugin,
             PlayerPlugin,
             MovementPlugin,
-            StructuresPlugin { debug_enable: false },
+            StructuresPlugin { debug_enable: true },
             OrePlugin,
-            DebugPlugin { enable: false },
+            DebugPlugin { enable: true },
             CameraPlugin,
         ))
         //.add_plugins(WorldInspectorPlugin::new())

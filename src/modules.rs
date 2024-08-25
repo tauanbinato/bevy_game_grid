@@ -7,9 +7,15 @@ use bevy::color::Color;
 use bevy::hierarchy::BuildChildren;
 use bevy::math::{Vec2, Vec3};
 use bevy::prelude::{
-    debug, default, Bundle, Commands, Component, Entity, Mesh, Rectangle, ResMut, Transform, Visibility,
+    debug, default, Bundle, Commands, Component, Entity, Event, Mesh, Rectangle, ResMut, Transform, Visibility,
 };
 use bevy::sprite::{ColorMaterial, MaterialMesh2dBundle};
+
+#[derive(Event)]
+pub struct ModuleDestroyedEvent {
+    pub destroyed_entity: Entity,
+    pub inner_grid_pos: (i32, i32),
+}
 
 #[derive(Debug, Default)]
 pub enum ModuleType {

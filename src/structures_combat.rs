@@ -1,7 +1,9 @@
 use crate::inputs::InputAction;
-use crate::modules::{MaterialProperties, Module, ModuleMaterial, ModuleMaterialType, ModuleType};
+use crate::modules::{
+    MaterialProperties, Module, ModuleDestroyedEvent, ModuleMaterial, ModuleMaterialType, ModuleType,
+};
 use crate::state::GameState;
-use crate::structures::{ControlledByPlayer, Structure};
+use crate::structures::{ControlledByPlayer, Pressurization, Structure, StructureDepressurizationEvent};
 use crate::UNIT_SCALE;
 use avian2d::math::Vector;
 use avian2d::prelude::*;
@@ -9,6 +11,7 @@ use bevy::color::palettes::css::WHITE;
 use bevy::color::Color;
 use bevy::prelude::*;
 use bevy::sprite::MaterialMesh2dBundle;
+use bevy::utils::tracing::field::debug;
 use std::any::Any;
 
 const PROJECTILE_LIFETIME: f32 = 1.0;
@@ -17,10 +20,12 @@ pub struct StructuresCombatPlugin;
 
 impl Plugin for StructuresCombatPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(FixedUpdate, structure_shoot_system.run_if(in_state(GameState::InGame))).add_systems(
-            Update,
-            (projectile_hit_system, projectile_lifetime_system).chain().run_if(in_state(GameState::InGame)),
-        );
+        app.add_systems(Update, handle_module_destroyed_system.run_if(on_event::<ModuleDestroyedEvent>()))
+            .add_systems(FixedUpdate, structure_shoot_system.run_if(in_state(GameState::InGame)))
+            .add_systems(
+                Update,
+                (projectile_hit_system, projectile_lifetime_system).chain().run_if(in_state(GameState::InGame)),
+            );
     }
 }
 
@@ -189,6 +194,55 @@ fn despawn_entity(entity: Entity, commands: &mut Commands) {
     }
 }
 
+fn handle_module_destroyed_system(
+    parent: Query<&Parent>,
+    mut parent_query: Query<(Entity, &mut Structure, &mut Pressurization)>,
+    mut event_reader: EventReader<ModuleDestroyedEvent>,
+    mut event_writer: EventWriter<StructureDepressurizationEvent>,
+    mut commands: Commands,
+) {
+    // read teh event
+    for event in event_reader.read() {
+        // get the entity that was destroyed
+        let module_destroyed = event.destroyed_entity;
+        if let Ok(structure_parent) = parent.get(module_destroyed) {
+            if let Ok((structure_entity, mut structure_attacked, mut pressurization)) =
+                parent_query.get_mut(**structure_parent)
+            {
+                // Remove from grid and check pressurization
+                structure_attacked.grid.clear_cell_type_from_cell(event.inner_grid_pos.0, event.inner_grid_pos.1);
+
+                let exposed_cells = structure_attacked.check_pressurization();
+                pressurization.exposed_cells = exposed_cells.clone();
+                pressurization.is_pressurized = exposed_cells.is_empty();
+
+                // Get the adjacent cells to the destroyed module
+                let adjacent_cells = structure_attacked.get_adjacent_cells(event.inner_grid_pos);
+
+                // Check if any adjacent cell is in the exposed_cells set from Pressurization
+                let mut any_exposed = false;
+                for cell in adjacent_cells {
+                    if pressurization.exposed_cells.contains(&cell) {
+                        any_exposed = true;
+                        break;
+                    }
+                }
+
+                if any_exposed {
+                    event_writer.send(StructureDepressurizationEvent {
+                        depressurized_structure: structure_entity,
+                        exposed_cells,
+                    });
+                    debug!("Depressurization detected!");
+                    //commands.entity(structure_entity).clear_children();
+                }
+                commands.entity(module_destroyed).remove_parent_in_place();
+                despawn_entity(module_destroyed, &mut commands);
+            }
+        }
+    }
+}
+
 /// This system ticks the `Timer` on the entity with the `projectile_entity`
 /// component using bevy's `Time` resource to get the delta between each update.
 fn projectile_lifetime_system(
@@ -207,72 +261,80 @@ fn projectile_lifetime_system(
 fn projectile_hit_system(
     mut collision_event_reader: EventReader<CollisionStarted>,
     projectile_physics_query: Query<(&LinearVelocity, &ProjectilePhysics), With<Projectile>>,
-    mut module_physics_query: Query<(&mut ModuleMaterial), With<Module>>,
+    mut module_physics_query: Query<&mut ModuleMaterial>,
     mut projectile_query: Query<&mut Projectile>,
     mut module_query: Query<&mut Module>,
     mut commands: Commands,
+    mut event_writer: EventWriter<ModuleDestroyedEvent>,
 ) {
     for CollisionStarted(entity1, entity2) in collision_event_reader.read() {
         if let Some(projectile_entity) = find_matching_entity(*entity1, *entity2, &mut projectile_query) {
             if let Some(module_entity) = find_matching_entity(*entity1, *entity2, &mut module_query) {
-                if let Ok((projectile_vel, projectile_physics)) = projectile_physics_query.get(projectile_entity) {
-                    if let Ok((mut module_material)) = module_physics_query.get_mut(module_entity) {
-                        // No need to scale the velocity; it's already in m/s.
-                        let velocity_mps = (projectile_vel.0.length());
+                if let Some(module) = module_query.get(module_entity).ok() {
+                    if let Ok((projectile_vel, projectile_physics)) = projectile_physics_query.get(projectile_entity) {
+                        if let Ok(mut module_material) = module_physics_query.get_mut(module_entity) {
+                            // No need to scale the velocity; it's already in m/s.
+                            let velocity_mps = (projectile_vel.0.length());
 
-                        // Calculate the kinetic energy of the projectile (Joules)
-                        let projectile_kinetic_energy = 0.5 * projectile_physics.mass * velocity_mps.powi(2);
+                            // Calculate the kinetic energy of the projectile (Joules)
+                            let projectile_kinetic_energy = 0.5 * projectile_physics.mass * velocity_mps.powi(2);
 
-                        // Retrieve the material's properties for the module and projectile
-                        let material_properties = module_material.material_type.properties();
-                        let projectile_properties = projectile_physics.material_type.properties();
+                            // Retrieve the material's properties for the module and projectile
+                            let material_properties = module_material.material_type.properties();
+                            let projectile_properties = projectile_physics.material_type.properties();
 
-                        let material_strength = material_properties.yield_strength;
+                            let material_strength = material_properties.yield_strength;
 
-                        // Factor in the projectile's density and yield strength
-                        let density_factor = projectile_properties.density / material_properties.density;
-                        let hardness_factor = projectile_properties.yield_strength / material_properties.yield_strength;
+                            // Factor in the projectile's density and yield strength
+                            let density_factor = projectile_properties.density / material_properties.density;
+                            let hardness_factor =
+                                projectile_properties.yield_strength / material_properties.yield_strength;
 
-                        // Calculate the adjusted damage
-                        let damage = (projectile_kinetic_energy * density_factor * hardness_factor) / material_strength;
+                            // Calculate the adjusted damage
+                            let damage =
+                                (projectile_kinetic_energy * density_factor * hardness_factor) / material_strength;
 
-                        // Update the module's structural points
-                        let structural_points_before = module_material.structural_points;
-                        module_material.structural_points -= damage;
+                            // Update the module's structural points
+                            let structural_points_before = module_material.structural_points;
+                            module_material.structural_points -= damage;
 
-                        // Check if the module is destroyed
-                        let is_destroyed = module_material.structural_points <= 0.0;
-                        if is_destroyed {
-                            despawn_entity(module_entity, &mut commands);
+                            // Check if the module is destroyed
+                            let is_destroyed = module_material.structural_points <= 0.0;
+                            if is_destroyed {
+                                event_writer.send(ModuleDestroyedEvent {
+                                    destroyed_entity: module_entity,
+                                    inner_grid_pos: module.inner_grid_pos,
+                                });
+                            }
+
+                            // // Debug output with all relevant information
+                            // debug!(
+                            //     "Collision Detected!\n\
+                            //     Velocity: {:?} m/s\n\
+                            //     Projectile Kinetic Energy: {:.2} J (joules)\n\
+                            //     Module Material: {:?}\n\
+                            //     Material Strength: {:.2} J\n\
+                            //     Material Density: {:.2} kg/m²\n\
+                            //     Projectile Material Density: {:.2} kg/m²\n\
+                            //     Projectile Material Strength: {:.2} J\n\
+                            //     Module Structural Points Before: {:.2}\n\
+                            //     Damage Applied: {:.2}\n\
+                            //     Module Structural Points After: {:.2} {}\n",
+                            //     velocity_mps,
+                            //     projectile_kinetic_energy,
+                            //     module_material.material_type,
+                            //     material_strength,
+                            //     material_properties.density,
+                            //     projectile_properties.density,
+                            //     projectile_properties.yield_strength,
+                            //     structural_points_before,
+                            //     damage,
+                            //     module_material.structural_points,
+                            //     if is_destroyed { "(Destroyed)" } else { "" },
+                            // );
+
+                            despawn_entity(projectile_entity, &mut commands);
                         }
-
-                        // Debug output with all relevant information
-                        debug!(
-                            "Collision Detected!\n\
-                            Velocity: {:?} m/s\n\
-                            Projectile Kinetic Energy: {:.2} J (joules)\n\
-                            Module Material: {:?}\n\
-                            Material Strength: {:.2} J\n\
-                            Material Density: {:.2} kg/m²\n\
-                            Projectile Material Density: {:.2} kg/m²\n\
-                            Projectile Material Strength: {:.2} J\n\
-                            Module Structural Points Before: {:.2}\n\
-                            Damage Applied: {:.2}\n\
-                            Module Structural Points After: {:.2} {}\n",
-                            velocity_mps,
-                            projectile_kinetic_energy,
-                            module_material.material_type,
-                            material_strength,
-                            material_properties.density,
-                            projectile_properties.density,
-                            projectile_properties.yield_strength,
-                            structural_points_before,
-                            damage,
-                            module_material.structural_points,
-                            if is_destroyed { "(Destroyed)" } else { "" },
-                        );
-
-                        despawn_entity(projectile_entity, &mut commands);
                     }
                 }
             }

@@ -1,7 +1,7 @@
 use crate::asset_loader::{AssetBlob, AssetStore, StructuresData};
 use crate::grid::{CellType, Grid};
 use crate::inputs::InputAction;
-use crate::modules::{spawn_module, Module, ModuleMaterial, ModuleMaterialType, ModuleType};
+use crate::modules::{spawn_module, Module, ModuleDestroyedEvent, ModuleMaterial, ModuleMaterialType, ModuleType};
 use crate::player::{Player, PlayerResource};
 use crate::state::GameState;
 use avian2d::prelude::*;
@@ -19,6 +19,8 @@ const STRUCTURE_CELL_SIZE: f32 = 5.0 * UNIT_SCALE;
 impl Plugin for StructuresPlugin {
     fn build(&self, app: &mut App) {
         app.add_event::<StructureInteractionEvent>()
+            .add_event::<StructureDepressurizationEvent>()
+            .add_event::<ModuleDestroyedEvent>()
             .add_systems(
                 OnEnter(GameState::BuildingStructures),
                 (build_structures_from_file, build_pressurization_system).chain(),
@@ -49,6 +51,12 @@ impl Plugin for StructuresPlugin {
 pub enum StructureInteractionEvent {
     PlayerEntered { player_entity: Entity, structure_entity: Entity },
     PlayerExited { player_entity: Entity, structure_entity: Entity },
+}
+
+#[derive(Event)]
+pub struct StructureDepressurizationEvent {
+    pub depressurized_structure: Entity,
+    pub exposed_cells: HashSet<(i32, i32)>,
 }
 
 #[derive(Default)]
@@ -90,6 +98,22 @@ pub struct Structure {
 impl Structure {
     pub fn new() -> Self {
         Structure { ..Default::default() }
+    }
+
+    pub fn get_adjacent_cells(&self, grid_pos: (i32, i32)) -> Vec<(i32, i32)> {
+        let (x, y) = grid_pos;
+        let mut adjacent_cells = Vec::new();
+
+        for (dx, dy) in &[(-1, 0), (1, 0), (0, -1), (0, 1)] {
+            let nx = x + dx;
+            let ny = y + dy;
+
+            if self.is_within_grid_bounds(nx, ny) {
+                adjacent_cells.push((nx, ny));
+            }
+        }
+
+        adjacent_cells
     }
 
     /// Converts a world position into the grid coordinates of the structure.
@@ -140,7 +164,8 @@ impl Structure {
         grid_x >= 0 && grid_x < self.grid.width as i32 && grid_y >= 0 && grid_y < self.grid.height as i32
     }
 
-    /// Checks if the structure is pressurized by performing a flood fill algorithm.
+    /// Checks if the total structure is pressurized by performing a flood fill algorithm.
+    /// Returns all the cells that are exposed to space.
     pub fn check_pressurization(&self) -> HashSet<(i32, i32)> {
         let mut visited = HashSet::new();
         let mut queue = VecDeque::new();
@@ -300,18 +325,6 @@ fn build_structures_from_file(
                     };
                 }
             }
-
-            // commands.entity(structure_entity).with_children(|children| {
-            //     children.spawn((
-            //         StructureSensor(structure_entity),
-            //         Collider::rectangle(
-            //             grid_width * structure_component.grid.cell_size,
-            //             grid_height * structure_component.grid.cell_size,
-            //         ),
-            //         Transform { translation: Vec3::new(0.0, 0.0, 2.0), ..default() },
-            //         Sensor,
-            //     ));
-            // });
 
             // Insert the structure bundle
             commands.entity(structure_entity).insert(StructureBundle {

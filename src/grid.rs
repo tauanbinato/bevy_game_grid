@@ -91,6 +91,12 @@ impl Grid {
         self.cells.get(&(x, y))
     }
 
+    pub fn clear_cell_type_from_cell(&mut self, x: i32, y: i32) {
+        if let Some(cell) = self.cells.get_mut(&(x, y)) {
+            cell.cell_type = CellType::Empty;
+        }
+    }
+
     fn remove_entity_from_cell(&mut self, x: i32, y: i32) {
         if let Some(cell) = self.cells.get_mut(&(x, y)) {
             cell.data = None;

@@ -66,7 +66,6 @@ pub struct StructuresPlugin {
 
 #[derive(Component)]
 pub struct Pressurization {
-    pub is_pressurized: bool,
     pub exposed_cells: HashSet<(i32, i32)>,
 }
 
@@ -101,15 +100,22 @@ impl Structure {
     }
 
     pub fn get_adjacent_cells(&self, grid_pos: (i32, i32)) -> Vec<(i32, i32)> {
-        let (x, y) = grid_pos;
+        let (col, row) = grid_pos;
         let mut adjacent_cells = Vec::new();
 
-        for (dx, dy) in &[(-1, 0), (1, 0), (0, -1), (0, 1)] {
-            let nx = x + dx;
-            let ny = y + dy;
+        // Directions ordered: top, left, bottom, right
+        for (dcol, drow) in &[
+            (0, -1), // Top (move up a row)
+            (-1, 0), // Left (move left a column)
+            (0, 1),  // Bottom (move down a row)
+            (1, 0),  // Right (move right a column)
+        ] {
+            let ncol = col + dcol;
+            let nrow = row + drow;
 
-            if self.is_within_grid_bounds(nx, ny) {
-                adjacent_cells.push((nx, ny));
+            // Ensure the adjacent cell is within grid bounds
+            if self.is_within_grid_bounds(ncol, nrow) {
+                adjacent_cells.push((ncol, nrow));
             }
         }
 
@@ -321,7 +327,10 @@ fn build_structures_from_file(
                                 ModuleMaterialType::Aluminum,
                             );
                         }
-                        _ => continue, // Skip characters that don't correspond to a module
+                        '#' => {
+                            structure_component.grid.insert(x as i32, y as i32, CellType::Empty);
+                        }
+                        _ => continue,
                     };
                 }
             }
@@ -341,7 +350,7 @@ fn build_structures_from_file(
                     visibility: Visibility::Visible,
                     ..Default::default()
                 },
-                pressurization: Pressurization { is_pressurized: false, exposed_cells: HashSet::new() },
+                pressurization: Pressurization { exposed_cells: HashSet::new() },
             });
         }
     } else {
@@ -374,7 +383,6 @@ fn build_pressurization_system(
     for (mut pressurization, structure) in structures_query.iter_mut() {
         let exposed_cells = structure.check_pressurization();
         pressurization.exposed_cells = exposed_cells.clone();
-        pressurization.is_pressurized = exposed_cells.is_empty();
     }
     next_state.set(GameState::InGame);
 }

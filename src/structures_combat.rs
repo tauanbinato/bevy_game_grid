@@ -1,3 +1,4 @@
+use crate::grid::CellType;
 use crate::inputs::InputAction;
 use crate::modules::{
     MaterialProperties, Module, ModuleDestroyedEvent, ModuleMaterial, ModuleMaterialType, ModuleType,
@@ -209,25 +210,35 @@ fn handle_module_destroyed_system(
             if let Ok((structure_entity, mut structure_attacked, mut pressurization)) =
                 parent_query.get_mut(**structure_parent)
             {
+                let module_inner_grid_pos = event.inner_grid_pos;
+                debug!("Module destroyed at {:?}", module_inner_grid_pos);
                 // Remove from grid and check pressurization
-                structure_attacked.grid.clear_cell_type_from_cell(event.inner_grid_pos.0, event.inner_grid_pos.1);
-
-                let exposed_cells = structure_attacked.check_pressurization();
-                pressurization.exposed_cells = exposed_cells.clone();
-                pressurization.is_pressurized = exposed_cells.is_empty();
+                structure_attacked.grid.clear_cell_type_from_cell(module_inner_grid_pos.0, module_inner_grid_pos.1);
 
                 // Get the adjacent cells to the destroyed module
-                let adjacent_cells = structure_attacked.get_adjacent_cells(event.inner_grid_pos);
+                let adjacent_cells = structure_attacked.get_adjacent_cells(module_inner_grid_pos);
 
                 // Check if any adjacent cell is in the exposed_cells set from Pressurization
                 let mut any_exposed = false;
-                for cell in adjacent_cells {
-                    if pressurization.exposed_cells.contains(&cell) {
-                        any_exposed = true;
-                        break;
+                for adjacent_cell in adjacent_cells {
+                    if !pressurization.exposed_cells.contains(&adjacent_cell) {
+                        debug!("Adjacent cells not exposed: {:?}", adjacent_cell);
+                        // if the module hit does not have near exposed cells, then could be a room pressurized or another module.
+                        // we need to check if is a room or another module to call the event
+                        if let Some(grid_cell) = structure_attacked.grid.get(adjacent_cell.0, adjacent_cell.1) {
+                            debug!("adjacent cell type {:?}", grid_cell.cell_type);
+                            if matches!(grid_cell.cell_type, CellType::Empty) {
+                                // if the cell is empty, then is a room
+                                any_exposed = true;
+                                break;
+                            }
+                        } else {
+                            debug!("adjacent cell not found");
+                        }
                     }
                 }
-
+                let exposed_cells = structure_attacked.check_pressurization();
+                pressurization.exposed_cells = exposed_cells.clone();
                 if any_exposed {
                     event_writer.send(StructureDepressurizationEvent {
                         depressurized_structure: structure_entity,
@@ -236,6 +247,7 @@ fn handle_module_destroyed_system(
                     debug!("Depressurization detected!");
                     //commands.entity(structure_entity).clear_children();
                 }
+
                 commands.entity(module_destroyed).remove_parent_in_place();
                 despawn_entity(module_destroyed, &mut commands);
             }

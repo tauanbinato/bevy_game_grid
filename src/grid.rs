@@ -31,16 +31,16 @@ impl Plugin for GridPlugin {
 #[derive(Default, Debug, Clone, PartialEq)]
 pub enum CellType {
     #[default]
-    OuterSpace,
     Empty,
     Module,
+    OuterSpace,
 }
 
 impl From<char> for CellType {
     fn from(c: char) -> Self {
         match c {
             '#' => CellType::OuterSpace,
-            _ => CellType::OuterSpace,
+            _ => CellType::Empty,
         }
     }
 }

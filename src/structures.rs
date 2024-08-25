@@ -56,7 +56,6 @@ pub enum StructureInteractionEvent {
 #[derive(Event)]
 pub struct StructureDepressurizationEvent {
     pub depressurized_structure: Entity,
-    pub exposed_cells: HashSet<(i32, i32)>,
 }
 
 #[derive(Default)]
@@ -97,6 +96,30 @@ pub struct Structure {
 impl Structure {
     pub fn new() -> Self {
         Structure { ..Default::default() }
+    }
+
+    /// After identifying the exposed cells, this method returns the modules adjacent to the exposed cells.
+    pub fn find_neighbors_of_exposed_modules(&self, exposed_cells: &HashSet<(i32, i32)>) -> HashSet<(i32, i32)> {
+        let mut neighboring_modules = HashSet::new();
+
+        // For each exposed cell, check its neighbors to see if they contain a module.
+        for &(x, y) in exposed_cells {
+            for (dx, dy) in &[(-1, 0), (1, 0), (0, -1), (0, 1)] {
+                // Only direct neighbors (left, right, up, down)
+                let nx = x + dx;
+                let ny = y + dy;
+
+                if self.is_within_grid_bounds(nx, ny) {
+                    if let Some(cell) = self.grid.get(nx, ny) {
+                        if matches!(cell.cell_type, CellType::Module) {
+                            neighboring_modules.insert((nx, ny));
+                        }
+                    }
+                }
+            }
+        }
+
+        neighboring_modules
     }
 
     pub fn get_adjacent_cells(&self, grid_pos: (i32, i32)) -> Vec<(i32, i32)> {
@@ -148,7 +171,7 @@ impl Structure {
     }
 
     /// Given grid cell coordinates, returns the world position of the center of that cell.
-    fn grid_cell_center_world_position(&self, cell_x: i32, cell_y: i32, structure_transform: &Transform) -> Vec2 {
+    pub fn grid_cell_center_world_position(&self, cell_x: i32, cell_y: i32, structure_transform: &Transform) -> Vec2 {
         let structure_world_pos = structure_transform.translation.truncate();
         let z_rotation = structure_transform.rotation.to_euler(EulerRot::XYZ).2;
 
@@ -327,10 +350,10 @@ fn build_structures_from_file(
                                 ModuleMaterialType::Aluminum,
                             );
                         }
-                        '#' => {
+                        _ => {
+                            // Insert an empty cell
                             structure_component.grid.insert(x as i32, y as i32, CellType::Empty);
                         }
-                        _ => continue,
                     };
                 }
             }

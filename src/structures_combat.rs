@@ -22,6 +22,12 @@ pub struct StructuresCombatPlugin;
 impl Plugin for StructuresCombatPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Update, handle_module_destroyed_system.run_if(on_event::<ModuleDestroyedEvent>()))
+            .add_systems(
+                Update,
+                handle_depressurization_system
+                    .run_if(on_event::<StructureDepressurizationEvent>())
+                    .after(PhysicsSet::Sync),
+            )
             .add_systems(FixedUpdate, structure_shoot_system.run_if(in_state(GameState::InGame)))
             .add_systems(
                 Update,
@@ -195,6 +201,39 @@ fn despawn_entity(entity: Entity, commands: &mut Commands) {
     }
 }
 
+fn handle_depressurization_system(
+    mut event_reader: EventReader<StructureDepressurizationEvent>,
+    parent_query: Query<(&Children, &Pressurization, &Structure)>,
+    modules_query: Query<(Entity, &Module)>,
+    mut commands: Commands,
+) {
+    for event in event_reader.read() {
+        // Ensure we are handling the correct structure
+        if let Ok((children, pressurization, structure)) = parent_query.get(event.depressurized_structure) {
+            debug!("Exposed cells: {:?}", pressurization.exposed_cells);
+            let neighboring_modules = structure.find_neighbors_of_exposed_modules(&pressurization.exposed_cells);
+
+            for child in children.iter() {
+                if let Ok((module_entity, module)) = modules_query.get(*child) {
+                    debug!("Module position: {:?}", module.inner_grid_pos);
+                    // Check if the module is in an exposed cell
+                    if neighboring_modules.contains(&module.inner_grid_pos) {
+                        debug!("Depressurization detected in module: {:?}", module_entity);
+
+                        commands.entity(module_entity).remove_parent_in_place();
+
+                        // Handle depressurization: Make the module dynamic
+                        commands.entity(module_entity).remove::<ColliderDensity>();
+
+                        commands.entity(module_entity).insert(RigidBody::Dynamic);
+                        commands.entity(module_entity).insert(Mass(10000.0));
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn handle_module_destroyed_system(
     parent: Query<&Parent>,
     mut parent_query: Query<(Entity, &mut Structure, &mut Pressurization)>,
@@ -211,7 +250,6 @@ fn handle_module_destroyed_system(
                 parent_query.get_mut(**structure_parent)
             {
                 let module_inner_grid_pos = event.inner_grid_pos;
-                debug!("Module destroyed at {:?}", module_inner_grid_pos);
                 // Remove from grid and check pressurization
                 structure_attacked.grid.clear_cell_type_from_cell(module_inner_grid_pos.0, module_inner_grid_pos.1);
 
@@ -222,30 +260,22 @@ fn handle_module_destroyed_system(
                 let mut any_exposed = false;
                 for adjacent_cell in adjacent_cells {
                     if !pressurization.exposed_cells.contains(&adjacent_cell) {
-                        debug!("Adjacent cells not exposed: {:?}", adjacent_cell);
                         // if the module hit does not have near exposed cells, then could be a room pressurized or another module.
                         // we need to check if is a room or another module to call the event
                         if let Some(grid_cell) = structure_attacked.grid.get(adjacent_cell.0, adjacent_cell.1) {
-                            debug!("adjacent cell type {:?}", grid_cell.cell_type);
                             if matches!(grid_cell.cell_type, CellType::Empty) {
                                 // if the cell is empty, then is a room
                                 any_exposed = true;
                                 break;
                             }
-                        } else {
-                            debug!("adjacent cell not found");
                         }
                     }
                 }
                 let exposed_cells = structure_attacked.check_pressurization();
                 pressurization.exposed_cells = exposed_cells.clone();
+
                 if any_exposed {
-                    event_writer.send(StructureDepressurizationEvent {
-                        depressurized_structure: structure_entity,
-                        exposed_cells,
-                    });
-                    debug!("Depressurization detected!");
-                    //commands.entity(structure_entity).clear_children();
+                    event_writer.send(StructureDepressurizationEvent { depressurized_structure: structure_entity });
                 }
 
                 commands.entity(module_destroyed).remove_parent_in_place();

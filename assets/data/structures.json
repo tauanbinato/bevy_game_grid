@@ -14,6 +14,18 @@
     },
     {
       "world_pos": [
+        0,
+        50
+      ],
+      "structure": [
+        "!WWWW!",
+        "CW###W",
+        "WW###W",
+        "EWEEWW"
+      ]
+    },
+    {
+      "world_pos": [
         100,
         0
       ],
@@ -30,8 +42,8 @@
         "W##WWWWW",
         "W##WWWWW",
         "W##WWWWW",
-        "W#CWWWWW",
-        "WW!WWWWW"
+        "W#WWWWWC",
+        "EW#WWWWE"
       ]
     }
   ]

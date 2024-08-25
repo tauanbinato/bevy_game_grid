@@ -203,30 +203,42 @@ fn despawn_entity(entity: Entity, commands: &mut Commands) {
 
 fn handle_depressurization_system(
     mut event_reader: EventReader<StructureDepressurizationEvent>,
-    parent_query: Query<(&Children, &Pressurization, &Structure)>,
-    modules_query: Query<(Entity, &Module)>,
+    parent_query: Query<(&Children, &Pressurization, &Structure, &Transform)>,
+    modules_query: Query<(Entity, &Module, &Transform)>,
     mut commands: Commands,
 ) {
     for event in event_reader.read() {
         // Ensure we are handling the correct structure
-        if let Ok((children, pressurization, structure)) = parent_query.get(event.depressurized_structure) {
+        if let Ok((children, pressurization, structure, structure_transform)) =
+            parent_query.get(event.depressurized_structure)
+        {
             debug!("Exposed cells: {:?}", pressurization.exposed_cells);
             let neighboring_modules = structure.find_neighbors_of_exposed_modules(&pressurization.exposed_cells);
 
             for child in children.iter() {
-                if let Ok((module_entity, module)) = modules_query.get(*child) {
+                if let Ok((module_entity, module, module_transform)) = modules_query.get(*child) {
                     debug!("Module position: {:?}", module.inner_grid_pos);
+
                     // Check if the module is in an exposed cell
                     if neighboring_modules.contains(&module.inner_grid_pos) {
                         debug!("Depressurization detected in module: {:?}", module_entity);
+
+                        // Calculate the direction of the force (from the structure's center to the module)
+                        let direction_3d = (module_transform.translation - structure_transform.translation).normalize();
+                        let direction = Vec2::new(direction_3d.x, direction_3d.y);
+
+                        // Apply a simple force to simulate depressurization
+                        let force_magnitude = 50000000.0; // Adjust this value as needed
+                        let force = direction * force_magnitude;
+
+                        commands.entity(module_entity).insert(ExternalForce::new(force).with_persistence(false));
 
                         commands.entity(module_entity).remove_parent_in_place();
 
                         // Handle depressurization: Make the module dynamic
                         commands.entity(module_entity).remove::<ColliderDensity>();
-
                         commands.entity(module_entity).insert(RigidBody::Dynamic);
-                        commands.entity(module_entity).insert(Mass(10000.0));
+                        commands.entity(module_entity).insert(Mass(20000.0));
                     }
                 }
             }

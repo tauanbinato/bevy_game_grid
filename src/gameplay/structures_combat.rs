@@ -1,19 +1,7 @@
-use crate::grid::CellType;
-use crate::inputs::InputAction;
-use crate::modules::{
-    MaterialProperties, Module, ModuleDestroyedEvent, ModuleMaterial, ModuleMaterialType, ModuleType,
-};
-use crate::state::GameState;
-use crate::structures::{ControlledByPlayer, Pressurization, Structure, StructureDepressurizationEvent};
-use crate::UNIT_SCALE;
-use avian2d::math::Vector;
-use avian2d::prelude::*;
-use bevy::color::palettes::css::WHITE;
-use bevy::color::Color;
-use bevy::prelude::*;
-use bevy::sprite::MaterialMesh2dBundle;
-use bevy::utils::tracing::field::debug;
-use std::any::Any;
+use crate::core::prelude::*;
+use crate::world::prelude::*;
+
+use crate::prelude::*;
 
 const PROJECTILE_LIFETIME: f32 = 1.0;
 

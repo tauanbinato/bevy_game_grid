@@ -1,6 +1,5 @@
-use crate::player::{Player, PlayerResource};
-use crate::state::GameState;
-use crate::structures::ControlledByPlayer;
+use crate::core::state::GameState;
+use crate::world::prelude::*;
 use avian2d::prelude::*;
 use bevy::prelude::*;
 use bevy::render::camera::ScalingMode;

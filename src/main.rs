@@ -1,6 +1,5 @@
 use my_game::plugin_groups::{GamePlugins, LoadersPlugins, UtilityPlugins};
 use my_game::prelude::*;
-use my_game::*;
 
 fn main() {
     App::new()
@@ -10,7 +9,7 @@ fn main() {
                     primary_window: Some(Window {
                         title: "My Game Window".into(),
                         name: Some("bevy.app".into()),
-                        resolution: (1800., 900.).into(),
+                        resolution: (WINDOW_WIDTH, WINDOW_HEIGHT).into(),
                         present_mode: PresentMode::Immediate,
                         ..default()
                     }),
@@ -22,7 +21,7 @@ fn main() {
                 }),
         )
         .add_plugins(PhysicsPlugins::default().with_length_unit(UNIT_SCALE))
-        .insert_resource(Gravity(Vector::ZERO))
+        .insert_resource(Gravity(DEFAULT_GRAVITY))
         .add_plugins((
             LoadersPlugins,
             GamePlugins { debug_enable: true },

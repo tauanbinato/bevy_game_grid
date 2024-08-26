@@ -1,6 +1,6 @@
-use crate::asset_loader::{AssetBlob, AssetStore, Level};
-use crate::player::{Player, PlayerResource};
-use crate::state::GameState;
+use crate::core::asset_loader::{AssetBlob, AssetStore, Level};
+use crate::core::state::GameState;
+use crate::world::player::{Player, PlayerResource};
 use avian2d::collision::Collider;
 use avian2d::prelude::{LinearVelocity, RigidBody};
 use bevy::prelude::*;

@@ -1,19 +1,16 @@
-use crate::asset_loader::{AssetBlob, AssetStore, StructuresData};
-use crate::grid::{CellType, Grid};
-use crate::inputs::InputAction;
-use crate::modules::{spawn_module, Module, ModuleDestroyedEvent, ModuleMaterial, ModuleMaterialType, ModuleType};
-use crate::player::{Player, PlayerResource};
-use crate::state::GameState;
-use avian2d::prelude::*;
-use bevy::app::{App, Plugin, Update};
-use bevy::color::palettes::css::*;
-use bevy::math::Vec3;
-use bevy::prelude::*;
-use log::debug;
-use std::collections::{HashSet, VecDeque};
+use crate::core::prelude::*;
+use crate::gameplay::prelude::*;
+use crate::world::prelude::*;
 
-use crate::structures_combat::StructuresCombatPlugin;
-use crate::UNIT_SCALE;
+use crate::prelude::*;
+// use avian2d::prelude::*;
+// use bevy::app::{App, Plugin, Update};
+// use bevy::color::palettes::css::*;
+// use bevy::math::Vec3;
+// use bevy::prelude::*;
+// use log::debug;
+// use std::collections::{HashSet, VecDeque};
+
 const STRUCTURE_CELL_SIZE: f32 = 5.0 * UNIT_SCALE;
 
 impl Plugin for StructuresPlugin {

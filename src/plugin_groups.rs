@@ -1,7 +1,8 @@
-use crate::{
-    AssetLoaderPlugin, CameraPlugin, DebugPlugin, GridPlugin, InputsPlugin, MovementPlugin, OrePlugin, PlayerPlugin,
-    SchedulePlugin, StatePlugin, StructuresPlugin,
-};
+use crate::core::prelude::*;
+use crate::gameplay::prelude::*;
+use crate::ui::prelude::*;
+use crate::world::prelude::*;
+
 use bevy::app::{PluginGroup, PluginGroupBuilder};
 
 /// A group of plugins that has loading assets involved

@@ -1,19 +1,8 @@
-use crate::grid::CellType;
-use crate::inputs::InputAction;
-use crate::modules::{
-    MaterialProperties, Module, ModuleDestroyedEvent, ModuleMaterial, ModuleMaterialType, ModuleType,
-};
-use crate::state::GameState;
-use crate::structures::{ControlledByPlayer, Pressurization, Structure, StructureDepressurizationEvent};
-use crate::UNIT_SCALE;
-use avian2d::math::Vector;
-use avian2d::prelude::*;
-use bevy::color::palettes::css::WHITE;
-use bevy::color::Color;
-use bevy::prelude::*;
-use bevy::sprite::MaterialMesh2dBundle;
-use bevy::utils::tracing::field::debug;
-use std::any::Any;
+use crate::configs::config::UNIT_SCALE;
+use crate::core::prelude::*;
+use crate::world::prelude::*;
+
+use crate::prelude::*;
 
 const PROJECTILE_LIFETIME: f32 = 1.0;
 
@@ -203,26 +192,22 @@ fn despawn_entity(entity: Entity, commands: &mut Commands) {
 
 fn handle_depressurization_system(
     mut event_reader: EventReader<StructureDepressurizationEvent>,
-    parent_query: Query<(&Children, &Pressurization, &Structure, &Transform)>,
+    mut parent_query: Query<(&Children, &mut Pressurization, &mut Structure, &Transform)>,
     modules_query: Query<(Entity, &Module, &Transform)>,
     mut commands: Commands,
 ) {
     for event in event_reader.read() {
         // Ensure we are handling the correct structure
-        if let Ok((children, pressurization, structure, structure_transform)) =
-            parent_query.get(event.depressurized_structure)
+        if let Ok((children, mut pressurization, mut depressurized_structure, structure_transform)) =
+            parent_query.get_mut(event.depressurized_structure)
         {
-            debug!("Exposed cells: {:?}", pressurization.exposed_cells);
-            let neighboring_modules = structure.find_neighbors_of_exposed_modules(&pressurization.exposed_cells);
+            let neighboring_modules =
+                depressurized_structure.find_neighbors_of_exposed_modules(&pressurization.exposed_cells);
 
             for child in children.iter() {
                 if let Ok((module_entity, module, module_transform)) = modules_query.get(*child) {
-                    debug!("Module position: {:?}", module.inner_grid_pos);
-
                     // Check if the module is in an exposed cell
                     if neighboring_modules.contains(&module.inner_grid_pos) {
-                        debug!("Depressurization detected in module: {:?}", module_entity);
-
                         // Calculate the direction of the force (from the structure's center to the module)
                         let direction_3d = (module_transform.translation - structure_transform.translation).normalize();
                         let direction = Vec2::new(direction_3d.x, direction_3d.y);
@@ -239,9 +224,16 @@ fn handle_depressurization_system(
                         commands.entity(module_entity).remove::<ColliderDensity>();
                         commands.entity(module_entity).insert(RigidBody::Dynamic);
                         commands.entity(module_entity).insert(Mass(20000.0));
+
+                        // Set cell type to empty without this check_pressurization will not work properly
+                        depressurized_structure
+                            .grid
+                            .set_cell_type_to_empty(module.inner_grid_pos.0, module.inner_grid_pos.1);
                     }
                 }
             }
+            let exposed_cells = depressurized_structure.check_pressurization();
+            pressurization.exposed_cells = exposed_cells.clone();
         }
     }
 }
@@ -263,7 +255,7 @@ fn handle_module_destroyed_system(
             {
                 let module_inner_grid_pos = event.inner_grid_pos;
                 // Remove from grid and check pressurization
-                structure_attacked.grid.clear_cell_type_from_cell(module_inner_grid_pos.0, module_inner_grid_pos.1);
+                structure_attacked.grid.set_cell_type_to_empty(module_inner_grid_pos.0, module_inner_grid_pos.1);
 
                 // Get the adjacent cells to the destroyed module
                 let adjacent_cells = structure_attacked.get_adjacent_cells(module_inner_grid_pos);
@@ -312,6 +304,7 @@ fn projectile_lifetime_system(
     }
 }
 
+// TODO: Make a system to detect the collisions and emit an event of structure hit, this system will only listen to the event.
 fn projectile_hit_system(
     mut collision_event_reader: EventReader<CollisionStarted>,
     projectile_physics_query: Query<(&LinearVelocity, &ProjectilePhysics), With<Projectile>>,

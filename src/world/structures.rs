@@ -1,19 +1,10 @@
-use crate::asset_loader::{AssetBlob, AssetStore, StructuresData};
-use crate::grid::{CellType, Grid};
-use crate::inputs::InputAction;
-use crate::modules::{spawn_module, Module, ModuleDestroyedEvent, ModuleMaterial, ModuleMaterialType, ModuleType};
-use crate::player::{Player, PlayerResource};
-use crate::state::GameState;
-use avian2d::prelude::*;
-use bevy::app::{App, Plugin, Update};
-use bevy::color::palettes::css::*;
-use bevy::math::Vec3;
-use bevy::prelude::*;
-use log::debug;
-use std::collections::{HashSet, VecDeque};
+use crate::configs::config::UNIT_SCALE;
+use crate::core::prelude::*;
+use crate::gameplay::prelude::*;
+use crate::world::prelude::*;
 
-use crate::structures_combat::StructuresCombatPlugin;
-use crate::UNIT_SCALE;
+use crate::prelude::*;
+
 const STRUCTURE_CELL_SIZE: f32 = 5.0 * UNIT_SCALE;
 
 impl Plugin for StructuresPlugin {
@@ -28,7 +19,10 @@ impl Plugin for StructuresPlugin {
             .add_systems(Update, control_command_center_system.run_if(in_state(GameState::InGame)))
             .add_systems(
                 PostUpdate,
-                (detect_player_inside_structure_system, make_player_child_of_structure_system)
+                (
+                    detect_player_inside_structure_system,
+                    make_player_child_of_structure_system.run_if(on_event::<StructureInteractionEvent>()),
+                )
                     .chain()
                     .after(PhysicsSet::Sync)
                     .run_if(in_state(GameState::InGame)),

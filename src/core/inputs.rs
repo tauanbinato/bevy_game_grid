@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::state::GameState;
+use crate::core::state::GameState;
 
 pub struct InputsPlugin;
 

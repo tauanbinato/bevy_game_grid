@@ -1,8 +1,6 @@
-use crate::inputs::InputAction;
-use crate::modules::{Module, ModuleType};
-use crate::player::{Player, PlayerResource};
-use crate::state::GameState;
-use crate::structures::{ControlledByPlayer, Structure};
+use crate::core::prelude::*;
+use crate::world::prelude::*;
+
 use avian2d::math::Vector;
 use avian2d::prelude::*;
 use bevy::prelude::*;

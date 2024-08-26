@@ -1,13 +1,12 @@
-use crate::grid::CellType;
-use crate::structures::Structure;
-use crate::UNIT_SCALE;
+use crate::configs::config::UNIT_SCALE;
+use crate::world::prelude::*;
 use avian2d::prelude::*;
 use bevy::asset::Assets;
 use bevy::color::Color;
 use bevy::hierarchy::BuildChildren;
 use bevy::math::{Vec2, Vec3};
 use bevy::prelude::{
-    debug, default, Bundle, Commands, Component, Entity, Event, Mesh, Rectangle, ResMut, Transform, Visibility,
+    default, Bundle, Commands, Component, Entity, Event, Mesh, Rectangle, ResMut, Transform, Visibility,
 };
 use bevy::sprite::{ColorMaterial, MaterialMesh2dBundle};
 

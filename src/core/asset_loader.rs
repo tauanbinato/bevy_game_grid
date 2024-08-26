@@ -1,4 +1,4 @@
-use crate::state::GameState;
+use crate::core::state::GameState;
 use bevy::{
     asset::{io::Reader, AssetLoader, AsyncReadExt, LoadContext},
     prelude::*,

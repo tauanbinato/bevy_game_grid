@@ -1,43 +1,7 @@
-use avian2d::{math::*, prelude::*};
-use bevy::app::PluginGroupBuilder;
-use bevy::log::LogPlugin;
-use bevy::prelude::*;
-use bevy::window::PresentMode;
-mod asset_loader;
-mod camera;
-mod debug;
-mod grid;
-mod inputs;
-mod modules;
-mod movement;
-mod ore;
-mod player;
-mod schedule;
-mod state;
-mod structures;
-mod structures_combat;
-mod utils;
+use my_game::plugin_groups::{GamePlugins, LoadersPlugins, UtilityPlugins};
+use my_game::prelude::*;
+use my_game::*;
 
-use asset_loader::AssetLoaderPlugin;
-use camera::CameraPlugin;
-use debug::DebugPlugin;
-use grid::GridPlugin;
-use inputs::InputsPlugin;
-use movement::MovementPlugin;
-use ore::OrePlugin;
-use player::PlayerPlugin;
-use schedule::SchedulePlugin;
-use state::StatePlugin;
-use structures::StructuresPlugin;
-
-/// A group of plugins that has loading assets involved
-pub struct LoadersPlugins;
-impl PluginGroup for LoadersPlugins {
-    fn build(self) -> PluginGroupBuilder {
-        PluginGroupBuilder::start::<Self>().add(StatePlugin).add(SchedulePlugin).add(AssetLoaderPlugin)
-    }
-}
-const UNIT_SCALE: f32 = 1.0; // 1 pixels = 1 meter
 fn main() {
     App::new()
         .add_plugins(
@@ -61,14 +25,8 @@ fn main() {
         .insert_resource(Gravity(Vector::ZERO))
         .add_plugins((
             LoadersPlugins,
-            GridPlugin { debug_enable: false },
-            InputsPlugin,
-            PlayerPlugin,
-            MovementPlugin,
-            StructuresPlugin { debug_enable: false },
-            OrePlugin,
-            DebugPlugin { enable: false },
-            CameraPlugin,
+            GamePlugins { debug_enable: true },
+            UtilityPlugins { debug_enable: true },
         ))
         //.add_plugins(WorldInspectorPlugin::new())
         .run();

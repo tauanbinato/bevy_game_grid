@@ -28,7 +28,10 @@ impl Plugin for StructuresPlugin {
             .add_systems(Update, control_command_center_system.run_if(in_state(GameState::InGame)))
             .add_systems(
                 PostUpdate,
-                (detect_player_inside_structure_system, make_player_child_of_structure_system)
+                (
+                    detect_player_inside_structure_system,
+                    make_player_child_of_structure_system.run_if(on_event::<StructureInteractionEvent>()),
+                )
                     .chain()
                     .after(PhysicsSet::Sync)
                     .run_if(in_state(GameState::InGame)),

@@ -61,13 +61,13 @@ fn main() {
         .insert_resource(Gravity(Vector::ZERO))
         .add_plugins((
             LoadersPlugins,
-            GridPlugin { debug_enable: true },
+            GridPlugin { debug_enable: false },
             InputsPlugin,
             PlayerPlugin,
             MovementPlugin,
-            StructuresPlugin { debug_enable: true },
+            StructuresPlugin { debug_enable: false },
             OrePlugin,
-            DebugPlugin { enable: true },
+            DebugPlugin { enable: false },
             CameraPlugin,
         ))
         //.add_plugins(WorldInspectorPlugin::new())

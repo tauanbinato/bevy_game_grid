@@ -1,15 +1,9 @@
+use crate::configs::config::UNIT_SCALE;
 use crate::core::prelude::*;
 use crate::gameplay::prelude::*;
 use crate::world::prelude::*;
 
 use crate::prelude::*;
-// use avian2d::prelude::*;
-// use bevy::app::{App, Plugin, Update};
-// use bevy::color::palettes::css::*;
-// use bevy::math::Vec3;
-// use bevy::prelude::*;
-// use log::debug;
-// use std::collections::{HashSet, VecDeque};
 
 const STRUCTURE_CELL_SIZE: f32 = 5.0 * UNIT_SCALE;
 

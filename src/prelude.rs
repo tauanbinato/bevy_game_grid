@@ -1,5 +1,4 @@
 // src/prelude.rs
-pub use crate::config::*;
 pub use avian2d::math::Vector;
 pub use avian2d::prelude::*;
 pub use bevy::color::palettes::css::*;

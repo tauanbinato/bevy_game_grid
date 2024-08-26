@@ -1,4 +1,4 @@
-use my_game::plugin_groups::{GamePlugins, LoadersPlugins, UtilityPlugins};
+use my_game::configs::prelude::*;
 use my_game::prelude::*;
 
 fn main() {

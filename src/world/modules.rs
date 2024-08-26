@@ -1,5 +1,5 @@
+use crate::configs::config::UNIT_SCALE;
 use crate::world::prelude::*;
-use crate::UNIT_SCALE;
 use avian2d::prelude::*;
 use bevy::asset::Assets;
 use bevy::color::Color;

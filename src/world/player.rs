@@ -1,6 +1,6 @@
+use crate::configs::config::UNIT_SCALE;
 use crate::core::state::GameState;
 use crate::world::grid::Grid;
-use crate::UNIT_SCALE;
 use avian2d::prelude::*;
 use bevy::prelude::*;
 use bevy::sprite::MaterialMesh2dBundle;

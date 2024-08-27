@@ -25,7 +25,7 @@ const CAM_LERP_FACTOR: f32 = 2.0;
 fn spawn_camera(mut commands: Commands) {
     commands.spawn(Camera2dBundle {
         transform: Transform::from_translation(Vec3::new(0.0, 0.0, 1000.0)),
-        projection: OrthographicProjection { scaling_mode: ScalingMode::WindowSize(1.0), scale: 0.1, ..default() },
+        //projection: OrthographicProjection { scaling_mode: ScalingMode::WindowSize(10.0), ..default() },
         ..Default::default()
     });
 }

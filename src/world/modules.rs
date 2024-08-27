@@ -6,7 +6,7 @@ use bevy::color::Color;
 use bevy::hierarchy::BuildChildren;
 use bevy::math::{Vec2, Vec3};
 use bevy::prelude::{
-    default, Bundle, Commands, Component, Entity, Event, Mesh, Rectangle, ResMut, Transform, Visibility,
+    debug, default, Bundle, Commands, Component, Entity, Event, Mesh, Rectangle, ResMut, Transform, Visibility,
 };
 use bevy::sprite::{ColorMaterial, MaterialMesh2dBundle};
 
@@ -14,6 +14,12 @@ use bevy::sprite::{ColorMaterial, MaterialMesh2dBundle};
 pub struct ModuleDestroyedEvent {
     pub destroyed_entity: Entity,
     pub inner_grid_pos: (i32, i32),
+}
+
+#[derive(Event)]
+pub struct ModuleTookDamageEvent {
+    pub module_entity: Entity,
+    pub damage: f32,
 }
 
 #[derive(Debug, Default)]
@@ -44,22 +50,22 @@ impl ModuleMaterialType {
     pub(crate) fn properties(&self) -> MaterialProperties {
         match self {
             ModuleMaterialType::Steel => MaterialProperties {
-                yield_strength: 250000.0,  // Strength in J/m² (converted from MPa)
-                thickness: 0.01,           // Thickness in meters (10 mm)
-                density: 78.5,             // Surface density in kg/m² (7850 kg/m³ * 0.01 m)
-                damage_threshold: 30000.0, // Approximation based on steel properties
+                yield_strength: 250000.0 / (UNIT_SCALE * UNIT_SCALE), // Strength in J/pixels²
+                thickness: 0.01,                                      // Thickness in meters (10 mm)
+                density: 7850.0 / (UNIT_SCALE * UNIT_SCALE), // Surface density in kg/pixels² (7850 kg/m³) adjusted to game units
+                damage_threshold: 30000.0 / (UNIT_SCALE * UNIT_SCALE), // Approximation based on steel properties J/pixels²
             },
             ModuleMaterialType::Wood => MaterialProperties {
-                yield_strength: 40000.0,  // Strength in J/m² (converted from MPa)
-                thickness: 0.02,          // Thickness in meters (20 mm)
-                density: 12.0,            // Surface density in kg/m² (600 kg/m³ * 0.02 m)
-                damage_threshold: 5000.0, // Approximation for wood properties
+                yield_strength: 40000.0 / (UNIT_SCALE * UNIT_SCALE), // Strength in J/pixels²
+                thickness: 0.02,                                     // Thickness in meters (20 mm)
+                density: 600.0 / (UNIT_SCALE * UNIT_SCALE), // Surface density in kg/pixels² (600 kg/m³) adjusted to game units
+                damage_threshold: 5000.0 / (UNIT_SCALE * UNIT_SCALE), // Approximation for wood properties J/pixels²
             },
             ModuleMaterialType::Aluminum => MaterialProperties {
-                yield_strength: 150000.0,  // Strength in J/m² (converted from MPa)
-                thickness: 0.005,          // Thickness in meters (5 mm)
-                density: 13.5,             // Surface density in kg/m² (2700 kg/m³ * 0.005 m)
-                damage_threshold: 20000.0, // Approximation for aluminum properties
+                yield_strength: 150000.0 / (UNIT_SCALE * UNIT_SCALE), // Strength in J/pixels²
+                thickness: 0.005,                                     // Thickness in meters (5 mm)
+                density: 2700.0 / (UNIT_SCALE * UNIT_SCALE), // Surface density in kg/pixels² (2700 kg/m³) adjusted to game units
+                damage_threshold: 20000.0 / (UNIT_SCALE * UNIT_SCALE), // Approximation for aluminum properties J/pixels²
             },
         }
     }
@@ -114,8 +120,7 @@ pub fn spawn_module(
 
     let unit_size = structure_component.grid.cell_size;
     let volume = (unit_size * mesh_scale_factor).powi(2) * properties.thickness; // Consider thickness in volume
-    let structural_points =
-        ((properties.yield_strength * volume * properties.density) / properties.damage_threshold) / UNIT_SCALE;
+    let structural_points = ((properties.yield_strength * volume * properties.density) / properties.damage_threshold);
 
     if !interactable {
         // Spawn the module entity
